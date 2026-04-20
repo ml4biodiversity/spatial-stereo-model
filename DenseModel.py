@@ -35,6 +35,5 @@ class DenseModelDecoder(nn.Module):
         rx = x.view(self.outsize)
         return rx
 
-
 if __name__ == '__main__':
     pass
