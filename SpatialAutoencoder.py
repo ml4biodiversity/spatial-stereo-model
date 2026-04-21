@@ -13,6 +13,7 @@ from torch import optim, nn, utils, Tensor
 import lightning as L
 from SpatialSpectrumDataloader import SpatialDataset
 from DenseModel import DenseModelEncoder, DenseModelDecoder
+from CNN2Model import Cnn2ModelEncoder
 
 # define the LightningModule
 class SpatialAutoEncoder(L.LightningModule):
@@ -32,6 +33,14 @@ class SpatialAutoEncoder(L.LightningModule):
         self.log("train_loss", loss)
         return loss
 
+    def validation_step(self, batch, batch_idx):
+        x, _ = batch
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        loss = nn.functional.mse_loss(x_hat, x)
+        self.log("val_loss", loss)
+        return loss
+
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
@@ -40,14 +49,23 @@ dataset = torch.load("specData/spec_fl_zoo_parc_aug25_data_0.pt",
                      weights_only=False)
 train_loader = SpatialDataset(dataset,16)
 
+dataset = torch.load("specData/spec_fl_zoo_parc_aug25_data_1.pt",
+                     weights_only=False)
+validate_loader = SpatialDataset(dataset,16)
+
 # init the autoencoder
 embed_dim = 1024
-encoder = DenseModelEncoder(train_loader.input_shape()[1:].numel(), embed_dim)
+# encoder = DenseModelEncoder(train_loader.input_shape()[1:], embed_dim)
+encoder = Cnn2ModelEncoder(train_loader.input_shape()[1:], embed_dim)
 decoder = DenseModelDecoder(embed_dim, train_loader.input_shape()[1:])
 autoencoder = SpatialAutoEncoder(encoder, decoder)
 
+# Compile the model
+autoencoder = torch.compile(autoencoder)
+
 trainer = L.Trainer(limit_train_batches=208, max_epochs=20)
-trainer.fit(model=autoencoder, train_dataloaders=train_loader)
+trainer.fit(model=autoencoder, train_dataloaders=train_loader,
+            val_dataloaders=validate_loader)
 
 if __name__ == '__main__':
     pass

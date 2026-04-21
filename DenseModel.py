@@ -12,7 +12,7 @@ class DenseModelEncoder(nn.Module):
     def __init__(self, input_dim, embedding_size):
         super(DenseModelEncoder, self).__init__()
         internal = 1024
-        self.ffn1 = nn.Linear(input_dim, embedding_size)
+        self.ffn1 = nn.Linear(input_dim.numel(), embedding_size)
         self.ffn2 = nn.Linear(embedding_size, embedding_size)
         self.relu = nn.ReLU()
 
