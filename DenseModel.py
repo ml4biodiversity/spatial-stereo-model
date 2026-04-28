@@ -27,11 +27,13 @@ class DenseModelDecoder(nn.Module):
         super(DenseModelDecoder, self).__init__()
         internal = 1024
         self.outsize = [-1]+list(output_dim)
-        self.ffn1 = nn.Linear(embedding_size, output_dim.numel())
+        self.ffn1 = nn.Linear(embedding_size, embedding_size)
+        self.ffn2 = nn.Linear(embedding_size, output_dim.numel())
         self.relu = nn.ReLU()
 
     def forward(self, x):
         x = self.relu(self.ffn1(x))
+        x = self.relu(self.ffn2(x))
         rx = x.view(self.outsize)
         return rx
 

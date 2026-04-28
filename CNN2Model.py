@@ -20,7 +20,7 @@ class Cnn2ModelEncoder(nn.Module):
         cnn_channels2 = 16
         cnn_channels3 = 8
         stride = 1
-        fnn_input = 10944
+        fnn_input = 896
         self.conv1 = nn.Sequential(
             nn.Conv2d(in_channels, cnn_channels1, kernel_size=5, stride=stride, padding=1),
             nn.Dropout(0.1),
@@ -35,7 +35,7 @@ class Cnn2ModelEncoder(nn.Module):
             nn.Conv2d(cnn_channels2, cnn_channels3, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(cnn_channels3))
 
-        self.avgpool = nn.AvgPool2d(7, stride=1)
+        self.avgpool = nn.AvgPool2d(3, stride=1)
         self.ffn1 = nn.Linear(fnn_input, embedding_size)
         self.relu = nn.ReLU()
 
@@ -66,3 +66,14 @@ class Cnn2ModelDecoder(nn.Module):
 
 if __name__ == '__main__':
     pass
+
+
+def tmp():
+    x = encoder.conv1(x)
+    x = encoder.maxpool(x)
+    x = encoder.conv2(x)
+    x = encoder.maxpool(x)
+    x = encoder.conv3(x)
+    x = encoder.avgpool(x)
+    x = x.view(x.size(0), -1)
+    x = encoder.ffn1(x)

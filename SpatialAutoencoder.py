@@ -8,12 +8,14 @@ Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
 
 import os
+from pathlib import Path
 import torch
-from torch import optim, nn, utils, Tensor
+from torch import optim, nn 
 import lightning as L
 from SpatialSpectrumDataloader import SpatialDataset
 from DenseModel import DenseModelEncoder, DenseModelDecoder
 from CNN2Model import Cnn2ModelEncoder
+from sklearn.model_selection import train_test_split
 
 # define the LightningModule
 class SpatialAutoEncoder(L.LightningModule):
@@ -45,27 +47,27 @@ class SpatialAutoEncoder(L.LightningModule):
         optimizer = optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
 
-dataset = torch.load("specData/spec_fl_zoo_parc_aug25_data_0.pt",
-                     weights_only=False)
-train_loader = SpatialDataset(dataset,16)
 
-dataset = torch.load("specData/spec_fl_zoo_parc_aug25_data_1.pt",
-                     weights_only=False)
-validate_loader = SpatialDataset(dataset,16)
+def main():
+    files = [str(x) for x in Path("specData").glob("*.pt")]
+    train_files, test_files = train_test_split(files[:50], test_size=0.2)
 
-# init the autoencoder
-embed_dim = 1024
-# encoder = DenseModelEncoder(train_loader.input_shape()[1:], embed_dim)
-encoder = Cnn2ModelEncoder(train_loader.input_shape()[1:], embed_dim)
-decoder = DenseModelDecoder(embed_dim, train_loader.input_shape()[1:])
-autoencoder = SpatialAutoEncoder(encoder, decoder)
+    train_loader = SpatialDataset(train_files, 16, packets=True)
+    validate_loader = SpatialDataset(test_files,16)
 
-# Compile the model
-autoencoder = torch.compile(autoencoder)
+    # init the autoencoder
+    embed_dim = 1024
+    # encoder = DenseModelEncoder(train_loader.input_shape()[1:], embed_dim)
+    encoder = Cnn2ModelEncoder(train_loader.input_shape()[1:], embed_dim)
+    decoder = DenseModelDecoder(embed_dim, train_loader.input_shape()[1:])
+    autoencoder = SpatialAutoEncoder(encoder, decoder)
 
-trainer = L.Trainer(limit_train_batches=208, max_epochs=20)
-trainer.fit(model=autoencoder, train_dataloaders=train_loader,
+    # Compile the model
+    autoencoder = torch.compile(autoencoder)
+
+    trainer = L.Trainer(max_epochs=100)
+    trainer.fit(model=autoencoder, train_dataloaders=train_loader,
             val_dataloaders=validate_loader)
 
 if __name__ == '__main__':
-    pass
+    main()
