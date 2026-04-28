@@ -12,20 +12,30 @@ import numpy as np
 
 
 def stack_to_channels(item):
-    return torch.stack([item["spec"], item["coh"], item["angle"]])
+    return torch.stack([item["spec"][:,10:42], item["coh"][:,10:42], item["angle"][:,10:42]])
 
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
-  'Characterizes a dataset for PyTorch' 
-  def __init__(self, indata, batch_size):
-      self.data = indata
+  packet_size = 10  # the number of data files in memory
+  packet_index = 0
+  def __init__(self, allfiles, batch_size, packets=False):
+      self.files = allfiles
+      self.batch_size = batch_size
+      if not packets:
+          indata = self.load_files(allfiles)
+      else:
+          indata = self.load_files(allfiles[:self.packet_size])
+      self.batchify(indata)
+          
+      
+  def batchify(self, indata):          
       self.keys = np.random.permutation(list(indata.keys()))
       self.index = 0 
-      self.N = int(len(self.keys)/batch_size)
-      self.batch_size = batch_size
+      self.N = int(len(self.keys)/self.batch_size)
       self.batch = []
       for c1 in range(self.N):
-          self.batch.append(self.make_batch(c1))
+          self.batch.append(self.make_batch(c1, indata))          
+
 
   def __len__(self):
         'Denotes the total number of items'
@@ -38,17 +48,37 @@ class SpatialDataset(torch.utils.data.Dataset):
       return torch.tensor([meta[x] for x in ["tempAve",
                                              "solarRadiationHigh","precipRate"]])
 
-  def make_batch(self, index):
+  def make_batch(self, index, data):
       st = index*self.batch_size
       ed = st + self.batch_size
-      spec = torch.stack([stack_to_channels(self.data[k])
+      spec = torch.stack([stack_to_channels(data[k])
                           for k in self.keys[st:ed]])
-      meta = torch.stack([self.stack_meta(self.data[k]["meta"])
+      meta = torch.stack([self.stack_meta(data[k]["meta"])
                           for k in self.keys[st:ed]])
       meta = torch.nan_to_num(meta, 0.0)
       return spec, meta
+  
+  def load_files(self, fnames):
+      dataset = torch.load(fnames[0], weights_only=False)
+      for c1 in range(1,len(fnames)):
+          dataset = dataset | torch.load(fnames[c1], weights_only=False)
+      return dataset
+
 
   def __getitem__(self, index):
+      if index==self.N-1: # When in the last packet, load new data
+          self.packet_index += 1
+          try:
+              files = self.files[self.packet_size*self.packet_index: 
+                             self.packet_size*(self.packet_index+1)]
+          except: 
+              files = self.files[:self.packet_size]
+              self.packet_index = 0
+              
+          indata = self.load_files(files)
+          print(f"BATCH INDEX: {self.packet_index} \n")   
+          self.batchify(indata)
+      
       return self.batch[index]
   
     

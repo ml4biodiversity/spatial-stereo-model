@@ -14,7 +14,6 @@ from torch import nn
 class Cnn2ModelEncoder(nn.Module):
     def __init__(self, input_dim, embedding_size):
         super(Cnn2ModelEncoder, self).__init__()
-        internal = 1024
         in_channels = input_dim[0]
         cnn_channels1 = 64
         cnn_channels2 = 16
@@ -53,8 +52,7 @@ class Cnn2ModelEncoder(nn.Module):
 
 class Cnn2ModelDecoder(nn.Module):
     def __init__(self, embedding_size, output_dim):
-        super(Cnn2ModelDecoder, self).__init__()
-        internal = 1024
+        super(Cnn2ModelDecoder, self).__init__()        
         self.outsize = [-1]+list(output_dim)
         self.ffn1 = nn.Linear(embedding_size, output_dim.numel())
         self.relu = nn.ReLU()

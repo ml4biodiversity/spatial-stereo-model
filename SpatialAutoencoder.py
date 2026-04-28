@@ -65,7 +65,7 @@ def main():
     # Compile the model
     autoencoder = torch.compile(autoencoder)
 
-    trainer = L.Trainer(max_epochs=100)
+    trainer = L.Trainer(max_epochs=10)
     trainer.fit(model=autoencoder, train_dataloaders=train_loader,
             val_dataloaders=validate_loader)
 
