@@ -11,8 +11,8 @@ import torch
 import numpy as np
 
 
-def stack_to_channels(item):
-    return torch.stack([item["spec"][:,10:42], item["coh"][:,10:42], item["angle"][:,10:42]])
+def stack_to_channels(item, st=10, ed=42):
+    return torch.stack([item["spec"][:,st:ed], item["coh"][:,st:ed], item["angle"][:,st:ed]])
 
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
