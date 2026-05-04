@@ -10,6 +10,37 @@ Copyright (c) Aki Härmä, DACS/FSE, Maastricht University, 2024
 import torch
 import numpy as np
 
+META = ['precipRate', 'pressureMax', 'dewptAvg', 'windgustHigh',
+                'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
+                'solarRadiationHigh', 'day_x', 'day_y']
+
+
+class MetaDataNormalizer:
+    offsets = np.zeros(len(META))
+    gains = np.zeros(len(META))
+    meta_labels = META
+
+    def __init__(self, coefficients):
+        table = torch.zeros([1, len(META)])
+        if type(coefficients) == dict:
+            self.offsets = coefficients["offsets"]
+            self.gains = coefficients["gains"]
+        else:
+            for f in coefficients:
+                dataset = torch.load(f, weights_only=False)
+                for k in dataset:
+                     m = torch.tensor([dataset[k]["meta"][x] for x in META])
+                     table = torch.cat([table, m.unsqueeze(0)])
+
+
+            self.offsets = table.mean(dim=0)
+            self.gains = 1 / (table.std(dim=0) + 0.0001)
+            normalizer = {"offsets": self.offsets, "gains": self.gains,
+                                                  "meta": META}
+            torch.save(normalizer, "normalizer_20260503.pt")
+
+    def normalize(self, data):
+        return torch.multiply(torch.sub(data, self.offsets), self.gains).float()
 
 def stack_to_channels(item, st=10, ed=42):
     return torch.stack([item["spec"][:,st:ed], item["coh"][:,st:ed], item["angle"][:,st:ed]])
@@ -18,6 +49,8 @@ def stack_to_channels(item, st=10, ed=42):
 class SpatialDataset(torch.utils.data.Dataset):
   packet_size = 10  # the number of data files in memory
   packet_index = 0
+  metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt"))  # For metadata
+
   def __init__(self, allfiles, batch_size, packets=False):
       self.files = allfiles
       self.batch_size = batch_size
@@ -45,8 +78,7 @@ class SpatialDataset(torch.utils.data.Dataset):
       return self.batch[0][0].shape
     
   def stack_meta(self, meta):
-      return torch.tensor([meta[x] for x in ["tempAve",
-                                             "solarRadiationHigh","precipRate"]])
+      return torch.tensor([meta[x] for x in META])
 
   def make_batch(self, index, data):
       st = index*self.batch_size
@@ -56,6 +88,8 @@ class SpatialDataset(torch.utils.data.Dataset):
       meta = torch.stack([self.stack_meta(data[k]["meta"])
                           for k in self.keys[st:ed]])
       meta = torch.nan_to_num(meta, 0.0)
+      meta = self.metanorm.normalize(meta)
+
       return spec, meta
   
   def load_files(self, fnames):
