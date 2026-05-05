@@ -84,15 +84,14 @@ class SpectrumNormalizer:
         return ndata
 
 
-def stack_to_channels(item, st=10, ed=42):
-    # st = 10; ed = 138 # ViTmodel!
-    return torch.stack([item["spec"][:,st:ed], item["coh"][:,st:ed], item["angle"][:,st:ed]])
-
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
   packet_size = 6  # the number of data files in memory
   packet_index = 0
-  metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt"))  # For metadata
+  metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt",
+                                           weights_only=False))  # For metadata
+  specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_20260505.pt",
+                                           weights_only=False))
 
   def __init__(self, allfiles, batch_size, packets=False):
       self.files = allfiles
@@ -102,7 +101,10 @@ class SpatialDataset(torch.utils.data.Dataset):
       else:
           indata = self.load_files(allfiles[:self.packet_size])
       self.batchify(indata)
-          
+
+  def stack_to_channels(self, item, st=10, ed=42):
+      spec = torch.stack([item["spec"][:, st:ed], item["coh"][:, st:ed], item["angle"][:, st:ed]])
+      return self.specnorm.normalize(spec)
       
   def batchify(self, indata):          
       self.keys = np.random.permutation(list(indata.keys()))
@@ -126,7 +128,7 @@ class SpatialDataset(torch.utils.data.Dataset):
   def make_batch(self, index, data):
       st = index*self.batch_size
       ed = st + self.batch_size
-      spec = torch.stack([stack_to_channels(data[k])
+      spec = torch.stack([self.stack_to_channels(data[k])
                           for k in self.keys[st:ed]])
       meta = torch.stack([self.stack_meta(data[k]["meta"])
                           for k in self.keys[st:ed]])
@@ -151,10 +153,14 @@ class SpatialDataset(torch.utils.data.Dataset):
           except: 
               files = self.files[:self.packet_size]
               self.packet_index = 0
-              
-          indata = self.load_files(files)
-          print(f"BATCH INDEX: {self.packet_index} \n")   
-          self.batchify(indata)
+          try:
+              indata = self.load_files(files)
+              print(f"BATCH INDEX: {self.packet_index} \n")
+              self.batchify(indata)
+          except:
+              print(f"Batch {self.packet_index} FAILED - ignoring data")
+              pass
+
       
       return self.batch[index]
   

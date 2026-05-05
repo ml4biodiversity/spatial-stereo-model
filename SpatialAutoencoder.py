@@ -60,20 +60,19 @@ def main():
     # For not to fill the memory
     test_files = test_files[:4]
 
-    train_loader = SpatialDataset(train_files, 4, packets=True)
-    validate_loader = SpatialDataset(test_files,4)
+    train_loader = SpatialDataset(train_files, 16, packets=True)
+    validate_loader = SpatialDataset(test_files,16)
 
-    embed_dim = 2048
+    embed_dim = 2048*2
     Nmeta = len(train_loader.metanorm.meta_labels)
     # encoder = DenseModelEncoder(train_loader.input_shape()[1:], embed_dim)
     # encoder = Cnn2ModelEncoder(train_loader.input_shape()[1:],
     #                           embed_dim-Nmeta)
-    encoder = ViTEncoder(128,
-                               embed_dim-Nmeta)
-    decoder = DenseModelDecoder(embed_dim, train_loader.input_shape()[1:])
+    encoder = ViTEncoder([128,32], embed_dim-Nmeta)
+    decoder = DenseModelDecoder(embed_dim, embed_dim, train_loader.input_shape()[1:])
 
-    # checkpoint = "lightning_logs/version_7/checkpoints/epoch=999-step=2303000.ckpt"
-    checkpoint = None
+    checkpoint = "lightning_logs/version_19/checkpoints/epoch=35-step=60537.ckpt"
+    # checkpoint = None
 
     if checkpoint is None:
         # init the autoencoder
