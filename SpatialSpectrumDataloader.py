@@ -14,7 +14,9 @@ META = ['precipRate', 'pressureMax', 'dewptAvg', 'windgustHigh',
                 'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
                 'solarRadiationHigh', 'day_x', 'day_y']
 
-
+"""
+    Normalizer for meta data
+"""
 class MetaDataNormalizer:
     offsets = np.zeros(len(META))
     gains = np.zeros(len(META))
@@ -42,8 +44,48 @@ class MetaDataNormalizer:
     def normalize(self, data):
         return torch.multiply(torch.sub(data, self.offsets), self.gains).float()
 
+"""
+    Normalizer for spectrum data (to [0,1])
+"""
+class SpectrumNormalizer:
+    arrays = ["spec", "coh", "angle"]
+    number_of_spectra = len(arrays)
+    mins = np.zeros(number_of_spectra)
+    maxs = np.zeros(number_of_spectra)
+
+    def __init__(self, coefficients):
+        if type(coefficients) == dict:
+            self.offsets = coefficients["offsets"]
+            self.gains = coefficients["gains"]
+        else:
+            self.mins = np.ones(self.number_of_spectra)*1000
+            self.maxs = -np.ones(self.number_of_spectra)*1000
+            for f in coefficients:
+                dataset = torch.load(f, weights_only=False)
+                for k in dataset:
+                    lmins = torch.tensor([dataset[k][x].min() for x in self.arrays])
+                    lmaxs = torch.tensor([dataset[k][x].max() for x in self.arrays])
+                    for c1 in range(self.number_of_spectra):
+                        if lmins[c1]<self.mins[c1]:
+                            self.mins[c1] = lmins[c1]
+                        if lmaxs[c1]>self.maxs[c1]:
+                            self.maxs[c1] = lmaxs[c1]
+
+            self.offsets = self.mins
+            self.gains = 1/(self.maxs-self.mins)
+            normalizer = {"offsets": self.offsets, "gains": self.gains,
+                                                  "arrays": self.arrays}
+            torch.save(normalizer, "spectrum_normalizer_20260505.pt")
+
+    def normalize(self, data):
+        ndata = data.clone()
+        for c1 in range(self.number_of_spectra):
+            ndata[c1,:,:] = (ndata[c1,:,:]-self.offsets[c1])*self.gains[c1]
+        return ndata
+
+
 def stack_to_channels(item, st=10, ed=42):
-    st = 10; ed = 138 # ViTmodel!
+    # st = 10; ed = 138 # ViTmodel!
     return torch.stack([item["spec"][:,st:ed], item["coh"][:,st:ed], item["angle"][:,st:ed]])
 
 # The data loader
