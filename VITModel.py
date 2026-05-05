@@ -16,7 +16,7 @@ from SpatialSpectrumDataloader import stack_to_channels
 class ViTEncoder(nn.Module):
     def __init__(self, input_dim, embedding_size):
         super(ViTEncoder, self).__init__()
-        self.configuration = ViTConfig(image_size=input_dim)
+        self.configuration = ViTConfig(image_size=input_dim, num_hidden_layers=4)
         self.model = ViTModel(self.configuration)
         self.ffn = nn.Linear(768, embedding_size)
 

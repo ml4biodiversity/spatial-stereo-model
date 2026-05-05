@@ -43,11 +43,12 @@ class MetaDataNormalizer:
         return torch.multiply(torch.sub(data, self.offsets), self.gains).float()
 
 def stack_to_channels(item, st=10, ed=42):
+    st = 10; ed = 138 # ViTmodel!
     return torch.stack([item["spec"][:,st:ed], item["coh"][:,st:ed], item["angle"][:,st:ed]])
 
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
-  packet_size = 10  # the number of data files in memory
+  packet_size = 6  # the number of data files in memory
   packet_index = 0
   metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt"))  # For metadata
 
