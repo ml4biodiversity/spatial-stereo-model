@@ -86,34 +86,39 @@ class SpectrumNormalizer:
 
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
-  packet_size = 6  # the number of data files in memory
   packet_index = 0
   metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt",
                                            weights_only=False))  # For metadata
   specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_20260505.pt",
                                            weights_only=False))
 
-  def __init__(self, allfiles, batch_size, packets=False):
+  def __init__(self, allfiles, batch_size):
+      self.keys = None
+      self.N = None
+      self.batch = None
       self.files = allfiles
+      self.number_files = len(allfiles)
+      self.file_index = 0
       self.batch_size = batch_size
-      if not packets:
-          indata = self.load_files(allfiles)
-      else:
-          indata = self.load_files(allfiles[:self.packet_size])
+      indata = torch.load(self.files[0], weights_only=False)
       self.batchify(indata)
 
   def stack_to_channels(self, item, st=10, ed=42):
+      st = np.random.randint(90)
+      ed = st + 32
       spec = torch.stack([item["spec"][:, st:ed], item["coh"][:, st:ed], item["angle"][:, st:ed]])
       return self.specnorm.normalize(spec)
       
   def batchify(self, indata):          
       self.keys = np.random.permutation(list(indata.keys()))
-      self.index = 0 
-      self.N = int(len(self.keys)/self.batch_size)
+      self.N = len(self.keys)
       self.batch = []
-      for c1 in range(self.N):
-          self.batch.append(self.make_batch(c1, indata))          
-
+      try:
+        for c1 in range(int(self.N/self.batch_size)):
+            self.batch.append(self.make_batch(c1, indata))
+      except:
+          print(f"Batchify failed at {c1} / {self.N}")
+      self.N = len(self.batch)
 
   def __len__(self):
         'Denotes the total number of items'
@@ -137,31 +142,19 @@ class SpatialDataset(torch.utils.data.Dataset):
 
       return spec, meta
   
-  def load_files(self, fnames):
-      dataset = torch.load(fnames[0], weights_only=False)
-      for c1 in range(1,len(fnames)):
-          dataset = dataset | torch.load(fnames[c1], weights_only=False)
-      return dataset
-
-
   def __getitem__(self, index):
-      if index==self.N-1: # When in the last packet, load new data
-          self.packet_index += 1
+      if index>=self.N-1: # When in the last packet, load new data
+          self.file_index += 1
+          if self.file_index == self.number_files:
+              self.file_index = 0
           try:
-              files = self.files[self.packet_size*self.packet_index: 
-                             self.packet_size*(self.packet_index+1)]
-          except: 
-              files = self.files[:self.packet_size]
-              self.packet_index = 0
-          try:
-              indata = self.load_files(files)
-              print(f"BATCH INDEX: {self.packet_index} \n")
+              indata = torch.load(self.files[self.file_index], weights_only=False)
+              print(f"Loaded: {self.file_index}:{self.files[self.file_index]} \n")
               self.batchify(indata)
           except:
-              print(f"Batch {self.packet_index} FAILED - ignoring data")
+              print(f"Batch {self.file_index} FAILED - ignoring data")
+              print(f"at {self.N}/{index}")
               pass
-
-      
       return self.batch[index]
   
     

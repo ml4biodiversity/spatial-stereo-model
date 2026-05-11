@@ -16,7 +16,7 @@ from transformers import ViTConfig, ViTModel
 class ViTEncoder(nn.Module):
     def __init__(self, input_dim, embedding_size):
         super(ViTEncoder, self).__init__()
-        self.configuration = ViTConfig(image_size=input_dim, num_hidden_layers=8)
+        self.configuration = ViTConfig(image_size=input_dim, num_hidden_layers=12)
         self.model = ViTModel(self.configuration)
         self.ffn = nn.Linear(17*768, embedding_size)
 

@@ -19,13 +19,19 @@ import pandas as pd
 import subprocess
 from shutil import copyfile
 import scipy.signal as dsp
-
+import soundfile
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 FS = 24000
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def load_audio_torch(fname):
+    if fname.find("er_path")>-1:
+        fname = fname.replace("er_path/","")
+    s, fs = soundfile.read(fname)
+    return torch.FloatTensor(s.T), fs
 
 
 def get_features(infeat):
@@ -39,11 +45,18 @@ def get_features(infeat):
     feat["day_x"] = np.sin(2*np.pi*day_time)
     feat["day_y"] = np.cos(2*np.pi*day_time)
        
+   # fields = ['datetime', 'precipRate', 'pressureMax', 'dewptAvg', 'windgustHigh',
+   #        'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
+   #        'solarRadiationHigh', 'lon', 'lat', 'MIT_AST_label', 'perch_prediction',
+   #        'birdnet_prediction', 'overlap', 'fusion_model_prediction', 'year_x',
+   #        'year_y','day_x','day_y']
+
     fields = ['datetime', 'precipRate', 'pressureMax', 'dewptAvg', 'windgustHigh',
-           'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
-           'solarRadiationHigh', 'lon', 'lat', 'MIT_AST_label', 'perch_prediction',
-           'birdnet_prediction', 'overlap', 'fusion_model_prediction', 'year_x',
-           'year_y','day_x','day_y']                    
+              'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
+              'solarRadiationHigh', 'lon', 'lat', 'MIT_AST_label', 'year_x',
+              'year_y', 'day_x', 'day_y']
+
+
     return feat[fields]
 
 
@@ -105,6 +118,9 @@ def raw_file_processing(meta, data_name, data_path, spec_path):
     # Slice to files of StoreSize blocks
     for s1 in range(NumStores):
         print(f"Processing set {s1} of {data_name}")
+        if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
+            print(f"Set {data_name} already done - exiting!")
+            break
         specData = {}
         #for c1 in range(meta.shape[0]):
         for c1 in range(StoreSize):            
@@ -117,7 +133,7 @@ def raw_file_processing(meta, data_name, data_path, spec_path):
             try:
                 cnt += 1
                 mets = get_features(meta.loc[cnt])   
-                sig,fs = ta.load(f"{data_path}/{meta.loc[cnt, 'filename']}") 
+                sig,fs = load_audio_torch(f"{data_path}/{meta.loc[cnt, 'filename']}")
                 lsp, cc, ang = specProc.process_signal(sig)
             except:
                 print(f"corrupted or removed audio file: {file}")          
@@ -132,14 +148,16 @@ def raw_file_processing(meta, data_name, data_path, spec_path):
     Main script for coherent spectrum processing
 """
 if __name__ == '__main__':
-    fpath = "/home/zoodata/preprocessed/"
+    fpath = "./gardenFiles"
     spec_path ="specData"
     os.makedirs(spec_path,exist_ok=True)
-    data_name = "fl_zoo_parc_aug25_data"
-    mfile = f"{fpath}/{data_name}/{data_name}_meta.xlsx"
-    meta = pd.read_excel(mfile)
 
-    raw_file_processing(meta, data_name, fpath, spec_path)
+    files = [str(x) for x in Path(fpath).rglob("*_speechless.xlsx")]
+
+    for f in files[20:]:
+        meta = pd.read_excel(f)
+        data_name = f[f.rfind("/") + 1:f.rfind("meta") - 1]
+        raw_file_processing(meta, data_name, fpath, spec_path)
     
     
 
