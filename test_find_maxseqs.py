@@ -19,10 +19,10 @@ class WeightMasks():
     wpat = None
     number_masks = None
     def __init__(self, L, B):
-        self.number_masks = int(L/B)*2-1
+        self.number_masks = int(L/B)*4-3
         self.B = B
         self.masks = np.zeros([2, self.number_masks]).astype(int)
-        B05 = int(B/2)
+        B05 = int(B/4)
         self.wpat = torch.zeros([self.number_masks, 3, 128, B])
 
         for i in range(self.number_masks):
@@ -45,6 +45,8 @@ N = len(kk)
 
 SPC = SpatialPatCorr(torch.Size([1, 3, 128, 258]))
 WM = WeightMasks(258,16)
+
+N = 10
 
 scores = torch.zeros([N, WM.number_masks])
 

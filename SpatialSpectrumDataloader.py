@@ -9,6 +9,8 @@ Copyright (c) Aki Härmä, DACS/FSE, Maastricht University, 2024
 
 import torch
 import numpy as np
+from pathlib import Path
+import datetime as dt
 
 META = ['precipRate', 'pressureMax', 'dewptAvg', 'windgustHigh',
                 'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
@@ -39,7 +41,7 @@ class MetaDataNormalizer:
             self.gains = 1 / (table.std(dim=0) + 0.0001)
             normalizer = {"offsets": self.offsets, "gains": self.gains,
                                                   "meta": META}
-            torch.save(normalizer, "normalizer_20260503.pt")
+            torch.save(normalizer, f"normalizer_{str(dt.datetime.today().date())}.pt")
 
     def normalize(self, data):
         return torch.multiply(torch.sub(data, self.offsets), self.gains).float()
@@ -75,7 +77,7 @@ class SpectrumNormalizer:
             self.gains = 1/(self.maxs-self.mins)
             normalizer = {"offsets": self.offsets, "gains": self.gains,
                                                   "arrays": self.arrays}
-            torch.save(normalizer, "spectrum_normalizer_20260505.pt")
+            torch.save(normalizer,f"spectrum_normalizer_{str(dt.datetime.today().date())}.pt")
 
     def normalize(self, data):
         ndata = data.clone()
@@ -87,9 +89,9 @@ class SpectrumNormalizer:
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
   packet_index = 0
-  metanorm = MetaDataNormalizer(torch.load("normalizer_20260503.pt",
+  metanorm = MetaDataNormalizer(torch.load("normalizer_2026-05-13.pt",
                                            weights_only=False))  # For metadata
-  specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_20260505.pt",
+  specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_2026-05-13.pt",
                                            weights_only=False))
 
   def __init__(self, allfiles, batch_size):
@@ -157,7 +159,13 @@ class SpatialDataset(torch.utils.data.Dataset):
               pass
       return self.batch[index]
   
-    
-
+"""
+    Calling the main updates the data normalizers
+"""
+if __name__ == '__main__':
+    print("Recomputing data normalizers...")
+    files = list(Path("./specData/").glob("*.pt"))
+    MetaDataNormalizer(files)
+    SpectrumNormalizer(files)
 
    

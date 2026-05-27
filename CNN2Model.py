@@ -1,8 +1,8 @@
 """
-@File  : DenseModel.py
+@File  : CNN2Model.py
 @Date  : 4/20/20263:08 PM
 @License: See license file is in the root of the repository.
-@Desc  :
+@Desc  : a simple 2d convolutional neural network
 
 Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
@@ -65,13 +65,3 @@ class Cnn2ModelDecoder(nn.Module):
 if __name__ == '__main__':
     pass
 
-
-def tmp():
-    x = encoder.conv1(x)
-    x = encoder.maxpool(x)
-    x = encoder.conv2(x)
-    x = encoder.maxpool(x)
-    x = encoder.conv3(x)
-    x = encoder.avgpool(x)
-    x = x.view(x.size(0), -1)
-    x = encoder.ffn1(x)
