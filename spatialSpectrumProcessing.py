@@ -7,7 +7,6 @@ See LICENSE file in the root of the repository.
 Copyright (c) Aki Härmä, DACS/FSE, Maastricht University, 2024
 """
 
-
 import os
 import torchaudio as ta
 import torch
@@ -104,14 +103,42 @@ class SpectrumProcessor(data.Dataset):
         'Denotes the total number of items'
         return self.N
 
+"""
+    Narrow-band full spectrum model
+"""
+class PureSpectrumProcessor(data.Dataset):
+    Nfft = 1024
+    hop = 512
+    B = 400
+    start_bin = 8
+    end_bin = start_bin+B
+    meta = None
+    def __init__(self):
+        self.specProcessor = ta.transforms.Spectrogram(n_fft=self.Nfft,
+                                                       hop_length=self.hop,
+                                                       power=None)
+        self.resampler = ta.transforms.Resample(orig_freq=48000, new_freq=FS)
+
+    def process_signal(self, sig):
+        # Resample
+        sig = self.resampler(sig)
+        # Pre-epmhasis
+        sig = torch.FloatTensor(dsp.lfilter([1,-0.95],[1, -0.6], sig))
+        # Complex spectrum
+        f = self.specProcessor(sig)
+        cc = torch.mul(f[:, self.start_bin:self.end_bin, :].conj(),
+                       f[:, self.start_bin:self.end_bin, :]).real
+        ang = (f[1, self.start_bin:self.end_bin, :].angle()
+                -f[0, self.start_bin:self.end_bin, :].angle())
+        return cc[0,:,:], cc[1,:,:], ang
+
 
 """ 
      The processing
 """            
-def raw_file_processing(meta, data_name, data_path, spec_path):
+def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     StoreSize = 5000   
-    
-    specProc = SpectrumProcessor()
+
     N = meta.shape[0]
     NumStores = int(np.ceil(N/StoreSize))
     cnt = 0
@@ -148,21 +175,23 @@ def raw_file_processing(meta, data_name, data_path, spec_path):
     Main script for coherent spectrum processing
 """
 if __name__ == '__main__':
-    fpath = "./gardenFiles"
-    spec_path ="specData"
-    os.makedirs(spec_path,exist_ok=True)
+    fpath = "./data"
 
-    files = [str(x) for x in Path(fpath).rglob("*_speechless.xlsx")]
+    spec_path1 ="specData1"
+    os.makedirs(spec_path1,exist_ok=True)
+    spec_path2 ="specData2"
+    os.makedirs(spec_path2,exist_ok=True)
 
-    for f in files[20:]:
+    files = [str(x) for x in Path(fpath).rglob("*speechless.xlsx")]
+
+    specProc1 = SpectrumProcessor()
+    specProc2 = PureSpectrumProcessor()
+
+    for f in files:
         meta = pd.read_excel(f)
         data_name = f[f.rfind("/") + 1:f.rfind("meta") - 1]
-        raw_file_processing(meta, data_name, fpath, spec_path)
-    
-    
+        raw_file_processing(specProc1, meta, data_name, fpath, spec_path1)
+        raw_file_processing(specProc2, meta, data_name, fpath, spec_path2)
 
     
-    
 
-       
-    
