@@ -55,24 +55,24 @@ class SpatialAutoEncoder(L.LightningModule):
 
 
 def main():
-    files = [str(x) for x in Path("specData").glob("*.pt")]
+    files = [str(x) for x in Path("specData2").glob("*.pt")]
     train_files, test_files = train_test_split(files, test_size=0.05)
     # For not to fill the memory
-    test_files = test_files[:6]
+    test_files = test_files[:8]
 
-    train_loader = SpatialDataset(train_files, 16)
-    validate_loader = SpatialDataset(test_files,16)
+    train_loader = SpatialDataset(train_files, 32)
+    validate_loader = SpatialDataset(test_files,32)
 
-    embed_dim = 2048*2
+    embed_dim = 2048*4
     Nmeta = len(train_loader.metanorm.meta_labels)
     # encoder = DenseModelEncoder(train_loader.input_shape()[1:], embed_dim)
     # encoder = Cnn2ModelEncoder(train_loader.input_shape()[1:],
     #                           embed_dim-Nmeta)
-    encoder = ViTEncoder([128,32], embed_dim-Nmeta)
+    encoder = ViTEncoder([400,32], embed_dim-Nmeta)
     decoder = DenseModelDecoder(embed_dim, embed_dim, train_loader.input_shape()[1:])
 
-    # checkpoint = "lightning_logs/version_45/checkpoints/epoch=113-step=31601.ckpt"
-    checkpoint = None
+    checkpoint = "lightning_logs/version_58/checkpoints/epoch=605-step=36336.ckpt"
+    # checkpoint = None
 
     if checkpoint is None:
         # init the autoencoder
@@ -85,7 +85,7 @@ def main():
     # Compile the model
     # autoencoder = torch.compile(autoencoder)
 
-    trainer = L.Trainer(max_epochs=800000)
+    trainer = L.Trainer(max_epochs=8000000)
     trainer.fit(model=autoencoder, train_dataloaders=train_loader,
             val_dataloaders=validate_loader)
 

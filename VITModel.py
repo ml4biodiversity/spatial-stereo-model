@@ -18,7 +18,7 @@ class ViTEncoder(nn.Module):
         super(ViTEncoder, self).__init__()
         self.configuration = ViTConfig(image_size=input_dim, num_hidden_layers=12)
         self.model = ViTModel(self.configuration)
-        self.ffn = nn.Linear(17*768, embedding_size)
+        self.ffn = nn.Linear(51*768, embedding_size)
 
     def forward(self, x):
         z = self.model(x)

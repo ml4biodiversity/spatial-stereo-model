@@ -23,12 +23,13 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 FS = 24000
-
+stereo_condition_threshold = 0.2
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_audio_torch(fname):
-    if fname.find("er_path")>-1:
-        fname = fname.replace("er_path/","")
+    #if fname.find("er_path")>-1:
+    #    fname = fname.replace("er_path/","")
+
     s, fs = soundfile.read(fname)
     return torch.FloatTensor(s.T), fs
 
@@ -127,17 +128,17 @@ class PureSpectrumProcessor(data.Dataset):
         # Complex spectrum
         f = self.specProcessor(sig)
         cc = torch.mul(f[:, self.start_bin:self.end_bin, :].conj(),
-                       f[:, self.start_bin:self.end_bin, :]).real
+                       f[:, self.start_bin:self.end_bin, :]).real.abs()+0.00000001
         ang = (f[1, self.start_bin:self.end_bin, :].angle()
                 -f[0, self.start_bin:self.end_bin, :].angle())
-        return cc[0,:,:], cc[1,:,:], ang
+        return cc[0,:,:].abs().log(), cc[1,:,:].abs().log(), ang
 
 
 """ 
      The processing
 """            
 def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
-    StoreSize = 5000   
+    StoreSize = 1000
 
     N = meta.shape[0]
     NumStores = int(np.ceil(N/StoreSize))
@@ -145,23 +146,31 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     # Slice to files of StoreSize blocks
     for s1 in range(NumStores):
         print(f"Processing set {s1} of {data_name}")
-        if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
-            print(f"Set {data_name} already done - exiting!")
-            break
+        #if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
+        #    print(f"Set {data_name} already done - exiting!")
+        #    break
         specData = {}
         #for c1 in range(meta.shape[0]):
         for c1 in range(StoreSize):            
             if cnt == N:
                 break
-            file = meta.loc[cnt,"filename"]    
+            file = meta.loc[cnt,"filename"]
+
             if file in ["file removed", "file missing"]:
                 cnt += 1
                 continue            
             try:
                 cnt += 1
-                mets = get_features(meta.loc[cnt])   
-                sig,fs = load_audio_torch(f"{data_path}/{meta.loc[cnt, 'filename']}")
+                mets = get_features(meta.loc[cnt])
+                afile = f"{data_path}/{meta.loc[cnt, 'filename']}"
+                sig,fs = load_audio_torch(afile)
+                # If the stereo signal is broken, we skip the sample
+                c = sig.norm(dim=1)
+                if ((c[0] - c[1]).abs() / (c[0] + c[1])) > stereo_condition_threshold:
+                    continue
                 lsp, cc, ang = specProc.process_signal(sig)
+                if lsp.isnan().any():
+                    print(f"Failed in {afile}" )
             except:
                 print(f"corrupted or removed audio file: {file}")          
                 continue
@@ -175,14 +184,16 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     Main script for coherent spectrum processing
 """
 if __name__ == '__main__':
-    fpath = "./data"
+    fpath = "/media/kakskyt/data/zoodata/er_path"
 
     spec_path1 ="specData1"
     os.makedirs(spec_path1,exist_ok=True)
     spec_path2 ="specData2"
     os.makedirs(spec_path2,exist_ok=True)
 
-    files = [str(x) for x in Path(fpath).rglob("*speechless.xlsx")]
+    files = [str(x) for x in Path(fpath).rglob("*_metadata.xlsx")]
+
+    files = [x for x in files if x.find("flamingo")>-1]
 
     specProc1 = SpectrumProcessor()
     specProc2 = PureSpectrumProcessor()
@@ -190,7 +201,7 @@ if __name__ == '__main__':
     for f in files:
         meta = pd.read_excel(f)
         data_name = f[f.rfind("/") + 1:f.rfind("meta") - 1]
-        raw_file_processing(specProc1, meta, data_name, fpath, spec_path1)
+        # raw_file_processing(specProc1, meta, data_name, fpath, spec_path1)
         raw_file_processing(specProc2, meta, data_name, fpath, spec_path2)
 
     

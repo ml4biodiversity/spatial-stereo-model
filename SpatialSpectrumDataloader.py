@@ -37,13 +37,14 @@ class MetaDataNormalizer:
                      table = torch.cat([table, m.unsqueeze(0)])
 
 
-            self.offsets = table.mean(dim=0)
-            self.gains = 1 / (table.std(dim=0) + 0.0001)
+            self.offsets = table.nan_to_num(0).mean(dim=0)
+            self.gains = 1 / (table.nan_to_num(0).std(dim=0) + 0.0001)
             normalizer = {"offsets": self.offsets, "gains": self.gains,
                                                   "meta": META}
             torch.save(normalizer, f"normalizer_{str(dt.datetime.today().date())}.pt")
 
     def normalize(self, data):
+        data = data.nan_to_num(0)
         return torch.multiply(torch.sub(data, self.offsets), self.gains).float()
 
 """
@@ -69,7 +70,11 @@ class SpectrumNormalizer:
                     lmaxs = torch.tensor([dataset[k][x].max() for x in self.arrays])
                     for c1 in range(self.number_of_spectra):
                         if lmins[c1]<self.mins[c1]:
-                            self.mins[c1] = lmins[c1]
+                            if lmins[c1] > -40:
+                                self.mins[c1] = lmins[c1]
+                            else:
+                                self.mins[c1] = -40
+
                         if lmaxs[c1]>self.maxs[c1]:
                             self.maxs[c1] = lmaxs[c1]
 
@@ -77,6 +82,7 @@ class SpectrumNormalizer:
             self.gains = 1/(self.maxs-self.mins)
             normalizer = {"offsets": self.offsets, "gains": self.gains,
                                                   "arrays": self.arrays}
+            # torch.save([self.mins, self.maxs], f"tmp_minmax.pt")
             torch.save(normalizer,f"spectrum_normalizer_{str(dt.datetime.today().date())}.pt")
 
     def normalize(self, data):
@@ -89,12 +95,14 @@ class SpectrumNormalizer:
 # The data loader
 class SpatialDataset(torch.utils.data.Dataset):
   packet_index = 0
-  metanorm = MetaDataNormalizer(torch.load("normalizer_2026-05-13.pt",
-                                           weights_only=False))  # For metadata
-  specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_2026-05-13.pt",
-                                           weights_only=False))
+  metanorm = None
+  specnorm = None
 
   def __init__(self, allfiles, batch_size):
+      self.metanorm = MetaDataNormalizer(torch.load("normalizer_2026-06-15.pt",
+                                               weights_only=False))  # For metadata
+      self.specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_2026-06-17.pt",
+                                               weights_only=False))
       self.keys = None
       self.N = None
       self.batch = None
@@ -164,8 +172,8 @@ class SpatialDataset(torch.utils.data.Dataset):
 """
 if __name__ == '__main__':
     print("Recomputing data normalizers...")
-    files = list(Path("./specData/").glob("*.pt"))
-    MetaDataNormalizer(files)
+    files = list(Path("./specData2/").glob("*.pt"))
+    # MetaDataNormalizer(files)
     SpectrumNormalizer(files)
 
    
