@@ -19,6 +19,7 @@ from avex.models.probes import build_probe_from_config
 import lightning as L
 
 
+
 # Optimization for Blackwell
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
