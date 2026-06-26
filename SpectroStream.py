@@ -1,8 +1,16 @@
+"""
+@File   :   SpectroStream.py
+@Date   :   17-6-202611:04
+@License: See license file in the root of the repository
+@Desc   :  Taken from https://github.com/Mddct/SPECTROSTREAM
+
+Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm
-
 
 class CausalEncoderBlock(nn.Module):
 
@@ -279,6 +287,7 @@ class SpectroStreamDecoder(nn.Module):
 
         # Final output Conv2D layer, projecting back to 2 channels (real, imag)
         self.output_conv = weight_norm(nn.Conv2d(C0, 2, kernel_size=(7, 7)))
+        self.output_conv_1 = weight_norm(nn.Conv2d(C0, 1, kernel_size=(7, 7)))
 
     def forward(self, embedding):
         """
@@ -316,8 +325,8 @@ class SpectroStreamDecoder(nn.Module):
         out_left = F.pad(out_left, (3, 3, 6, 0))
         out_right = F.pad(out_right, (3, 3, 6, 0))
 
-        out_left_ch = self.output_conv(out_left)
-        out_right_ch = self.output_conv(out_right)
+        out_left_ch = self.output_conv_1(out_left)
+        out_right_ch = self.output_conv_1(out_right)
 
         return out_left_ch, out_right_ch
 
