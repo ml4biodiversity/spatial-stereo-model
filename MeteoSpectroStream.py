@@ -8,9 +8,13 @@ Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
 import soundfile
 import torch
+from pathlib import Path
 from torch import nn
+from torch.distributed._shard.sharding_spec.chunk_sharding_spec_ops import embedding
+
 from SpectroStream import SpectroStreamEncoder, SpectroStreamDecoder
 import torch.nn.functional as F
+from MeteoSpectrumDataloader import MeteoSpectrumDataset
 from torch.nn.utils import weight_norm
 
 def load_audio_torch(fname):
@@ -37,6 +41,8 @@ class MeteoSpectroStream(nn.Module):
         self.hop_length = 480
         self.win_length = 960
         self.n_fft = 960
+        self.n_meta = 8
+        self.meteo = nn.Linear(self.n_fft, self.n_fft)
 
     # Signals to spectrum representation
     def to_spectrogram(self, x):
@@ -146,14 +152,33 @@ class MeteoSpectroStream(nn.Module):
 
 if __name__ == '__main__':
     model = MeteoSpectroStream()
-    x, fs = load_audio_torch(
-        "data/preprocessed/fl_3s_avifauna_flamingos_sept25_data/64/er_file_2025_09_07_01_06_05.250000.wav")
-    y = model(x.unsqueeze(0))
+    loss = torch.nn.MSELoss()
+    files = list(Path("./specData2/").glob("*.pt"))
+    ffn = nn.Linear(140,128)
 
-    zl, zr = model.to_spectrogram(x.unsqueeze(0))
-    c = model.encoder(zl, zr)
+    loader = MeteoSpectrumDataset(files, 16)
+    x, m = loader[1]
+
+    c1 = 0
+    zl = x["left"][c1].permute([0,2,1])
+    zr = x["right"][c1].permute([0,2,1])
+    y =  x["cc"][c1].permute([1,0])[1:,:].log()
+
+    c = model.encoder(zl.unsqueeze(0), zr.unsqueeze(0))
+    meta = m[c1, :].repeat(c.shape[2], 1).T.unsqueeze(0)
+    embedding = torch.cat([c, meta], dim=1)
+
+    # Feedforward merging of tokens and metadata
+    out = ffn(embedding.permute([0, 2, 1])).permute([0, 2, 1])
+
+    # Decoding
+    out_left_stft_ch, out_right_stft_ch = model.decoder(out[:,:,:])
+
+    mix = (out_left_stft_ch + out_right_stft_ch)[0,0,:,:].log()
+
+    e = loss(y, mix)
     
 
-    out_left_stft_ch, out_right_stft_ch = model.decoder(c[:,:,1:])
+
 
 
