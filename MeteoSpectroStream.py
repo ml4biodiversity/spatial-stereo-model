@@ -109,46 +109,22 @@ class MeteoSpectroStream(nn.Module):
 
         return out_wav
 
-    def forward(self, x):
-        """
-        The main forward pass of the SpectroStream model.
+    def forward(self, x, m):
+        zl = x["left"].permute([0, 1, 3, 2])
+        zr = x["right"].permute([0, 1, 3, 2])
 
-        Args:
-            x (Tensor): The input stereo audio waveform.
-                        Shape: (B, 2, T_samples), where B is batch size,
-                               2 is for stereo, T_samples is the number of audio samples.
-        Returns:
-            Tensor: The reconstructed stereo audio waveform.
-                    Its length will be slightly shorter than the input due to latency.
-        """
-        # --- STEP 1: Audio -> Spectrogram (STFT) ---
-        # Process left and right channels separately
+        c = model.encoder(zl, zr)
+        meta = m.unsqueeze(2).repeat(1, 1, c.shape[2])
+        embedding = torch.cat([c, meta], dim=1)
 
-        x_left_ch, x_right_ch = self.to_spectrogram(x)
+        # Feedforward merging of tokens and metadata
+        out = ffn(embedding.permute([0, 2, 1])).permute([0, 2, 1])
 
-        # --- STEP 3: Encoding ---
-        # Pass the prepared spectrograms through the encoder
-        embedding = self.encoder(x_left_ch, x_right_ch)
+        # Decoding
+        out_left_stft_ch, out_right_stft_ch = model.decoder(out[:, :, :])
 
-        # --- STEP 4: Quantization (Placeholder) ---
-        # In a real codec, a quantizer (like RVQ) would be used here.
-        # This step compresses the continuous embedding into discrete codes.
-        # embedding -> codes -> quantized_embedding
-        # For this autoencoder implementation, we pass it through directly.
-        quantized_embedding = embedding
-
-        # --- STEP 5: Decoder Look-ahead ---
-        # "we give the decoder a one-embedding look-ahead by shifting its input"
-        # We implement this by removing the first embedding from the sequence.
-        decoder_input = quantized_embedding[:, :, 1:]
-
-        # --- STEP 6: Decoding ---
-        # The decoder takes the shifted embeddings and reconstructs the spectrograms
-        out_left_stft_ch, out_right_stft_ch = self.decoder(decoder_input)
-
-        out_wav = self.to_waveform(out_left_stft_ch, out_right_stft_ch)
-        return out_wav
-
+        mix = (out_left_stft_ch + out_right_stft_ch)[:, 0, :, :].abs().log()
+        return mix
 
 if __name__ == '__main__':
     model = MeteoSpectroStream()
@@ -158,25 +134,10 @@ if __name__ == '__main__':
 
     loader = MeteoSpectrumDataset(files, 16)
     x, m = loader[1]
+    y = x["cc"].permute([0, 2, 1])[:,1:, :].log()
 
-    c1 = 0
-    zl = x["left"][c1].permute([0,2,1])
-    zr = x["right"][c1].permute([0,2,1])
-    y =  x["cc"][c1].permute([1,0])[1:,:].log()
-
-    c = model.encoder(zl.unsqueeze(0), zr.unsqueeze(0))
-    meta = m[c1, :].repeat(c.shape[2], 1).T.unsqueeze(0)
-    embedding = torch.cat([c, meta], dim=1)
-
-    # Feedforward merging of tokens and metadata
-    out = ffn(embedding.permute([0, 2, 1])).permute([0, 2, 1])
-
-    # Decoding
-    out_left_stft_ch, out_right_stft_ch = model.decoder(out[:,:,:])
-
-    mix = (out_left_stft_ch + out_right_stft_ch)[0,0,:,:].log()
-
-    e = loss(y, mix)
+    p = model(x, m)
+    e = loss(y, p)
     
 
 

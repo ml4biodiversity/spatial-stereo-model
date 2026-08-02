@@ -19,17 +19,18 @@ import subprocess
 from shutil import copyfile
 import scipy.signal as dsp
 import soundfile
+from transformers import AutoModelForAudioClassification
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 FS = 24000
-stereo_condition_threshold = 0.2
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_audio_torch(fname):
-    #if fname.find("er_path")>-1:
-    #    fname = fname.replace("er_path/","")
-
+    if fname.find("er_path")>-1:
+        fname = fname.replace("er_path/","")
     s, fs = soundfile.read(fname)
     return torch.FloatTensor(s.T), fs
 
@@ -55,6 +56,13 @@ def get_features(infeat):
               'windspeedAvg', 'tempAve', 'humidityAvg', 'winddirAvg', 'uvHigh',
               'solarRadiationHigh', 'lon', 'lat', 'MIT_AST_label', 'year_x',
               'year_y', 'day_x', 'day_y']
+
+
+    # Add categorical parameters from auxiliary models
+    model = AutoModelForAudioClassification.from_pretrained("MIT/ast-finetuned-audioset-14-14-0.443")
+    mit_labels = model.config.label2id
+
+    
 
 
     return feat[fields]
@@ -110,7 +118,7 @@ class SpectrumProcessor(data.Dataset):
 class PureSpectrumProcessor(data.Dataset):
     Nfft = 1024
     hop = 512
-    B = 400
+    B = 480
     start_bin = 8
     end_bin = start_bin+B
     meta = None
@@ -126,12 +134,14 @@ class PureSpectrumProcessor(data.Dataset):
         # Pre-epmhasis
         sig = torch.FloatTensor(dsp.lfilter([1,-0.95],[1, -0.6], sig))
         # Complex spectrum
-        f = self.specProcessor(sig)
-        cc = torch.mul(f[:, self.start_bin:self.end_bin, :].conj(),
-                       f[:, self.start_bin:self.end_bin, :]).real.abs()+0.00000001
-        ang = (f[1, self.start_bin:self.end_bin, :].angle()
-                -f[0, self.start_bin:self.end_bin, :].angle())
-        return cc[0,:,:].abs().log(), cc[1,:,:].abs().log(), ang
+        f = self.specProcessor(sig)[:,self.start_bin:self.end_bin,:]
+
+        left = torch.stack([f[0,:,:].real, f[0,:,:].imag], dim=0)
+        right = torch.stack([f[1, :, :].real, f[1, :, :].imag], dim=0)
+
+        cc = torch.mul(f[0, :, :].conj(), f[1, :, :]).abs()
+
+        return left, right, cc
 
 
 """ 
@@ -146,36 +156,28 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     # Slice to files of StoreSize blocks
     for s1 in range(NumStores):
         print(f"Processing set {s1} of {data_name}")
-        #if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
-        #    print(f"Set {data_name} already done - exiting!")
-        #    break
+        if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
+            print(f"Set {data_name} already done - exiting!")
+            break
         specData = {}
         #for c1 in range(meta.shape[0]):
         for c1 in range(StoreSize):            
             if cnt == N:
                 break
-            file = meta.loc[cnt,"filename"]
-
+            file = meta.loc[cnt,"filename"]    
             if file in ["file removed", "file missing"]:
                 cnt += 1
                 continue            
             try:
                 cnt += 1
-                mets = get_features(meta.loc[cnt])
-                afile = f"{data_path}/{meta.loc[cnt, 'filename']}"
-                sig,fs = load_audio_torch(afile)
-                # If the stereo signal is broken, we skip the sample
-                c = sig.norm(dim=1)
-                if ((c[0] - c[1]).abs() / (c[0] + c[1])) > stereo_condition_threshold:
-                    continue
-                lsp, cc, ang = specProc.process_signal(sig)
-                if lsp.isnan().any():
-                    print(f"Failed in {afile}" )
+                mets = get_features(meta.loc[cnt])   
+                sig,fs = load_audio_torch(f"{data_path}/{meta.loc[cnt, 'filename']}")
+                left, right, cc = specProc.process_signal(sig)
             except:
                 print(f"corrupted or removed audio file: {file}")          
                 continue
             # Storing the coherence spectrogram            
-            specData[file] = {"spec":lsp, "coh":cc, "angle":ang, "meta":mets}
+            specData[file] = {"left":left, "right":right, "cc":cc, "meta":mets}
    
         torch.save(specData, f"{spec_path}/spec_{data_name}_{s1}.pt")            
                 
@@ -184,23 +186,21 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     Main script for coherent spectrum processing
 """
 if __name__ == '__main__':
-    fpath = "/media/kakskyt/data/zoodata/er_path"
+    fpath = "./data/"
 
     spec_path1 ="specData1"
     os.makedirs(spec_path1,exist_ok=True)
     spec_path2 ="specData2"
     os.makedirs(spec_path2,exist_ok=True)
 
-    files = [str(x) for x in Path(fpath).rglob("*_metadata.xlsx")]
+    files = [str(x) for x in Path(fpath).rglob("*speechless.xlsx")]
 
-    files = [x for x in files if x.find("flamingo")>-1]
-
-    specProc1 = SpectrumProcessor()
+    # specProc1 = SpectrumProcessor()
     specProc2 = PureSpectrumProcessor()
 
     for f in files:
-        meta = pd.read_excel(f)
-        data_name = f[f.rfind("/") + 1:f.rfind("meta") - 1]
+        meta = pd.read_excel(f, index_col=0)
+        data_name = f[f.rfind(os.sep) + 1:f.rfind("meta") - 1]
         # raw_file_processing(specProc1, meta, data_name, fpath, spec_path1)
         raw_file_processing(specProc2, meta, data_name, fpath, spec_path2)
 

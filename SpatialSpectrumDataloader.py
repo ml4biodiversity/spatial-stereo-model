@@ -99,7 +99,7 @@ class SpatialDataset(torch.utils.data.Dataset):
   specnorm = None
 
   def __init__(self, allfiles, batch_size):
-      self.metanorm = MetaDataNormalizer(torch.load("normalizer_2026-06-15.pt",
+      self.metanorm = MetaDataNormalizer(torch.load("normalizer_2026-06-19.pt",
                                                weights_only=False))  # For metadata
       self.specnorm = SpectrumNormalizer(torch.load("spectrum_normalizer_2026-06-17.pt",
                                                weights_only=False))

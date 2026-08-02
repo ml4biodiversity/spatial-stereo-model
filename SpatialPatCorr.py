@@ -6,14 +6,26 @@
 
 Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
+import numpy as np
 import torch
 from torch import nn
 from torch.functional import F
 
 def stack_to_channels(item):
-    spec = torch.stack([item["spec"]-item["spec"].mean(), item["coh"]-item["coh"].mean(),
-                        item["angle"]-item["angle"].mean()])
+    left = item["left"].flatten(0,1)
+    right = item["right"].flatten(0, 1)
+    # spec = torch.stack([left-left.mean(), right-right.mean()])
+    spec = torch.stack([left, right])
+
     return spec
+
+
+def subtract_mean(x):
+    return torch.subtract(x[:, :, :, :].permute([0, 3, 2, 1]),
+                          x.mean([2, 3])[0]).permute([0, 3, 2, 1])
+
+
+
 
 class SpatialPatCorr(nn.Module):
     def __init__(self, dims):
@@ -36,13 +48,53 @@ class SpatialPatCorr(nn.Module):
             corrs[:,c1:c1+1,:,:] = self.single_channel(x[:,c1:c1+1,:,:], pat[:,c1:c1+1,:,:], unit)
         return corrs
 
+    def compute_gain(self, x, pat):
+        gains = torch.zeros([x.shape[0], self.dims[1], 1, self.dims[3]])
+        for c1 in range(self.dims[1]):
+            g = torch.mul(pat[:,c1:c1+1,:,:], pat[:,c1:c1+1,:,:]).sum()
+            gg = F.conv2d(x[:,c1:c1+1,:,:], pat[:,c1:c1+1,:,:])/g
+            padding = x.shape[-1] - gg.shape[-1] - 1
+            gains[:, c1:c1 + 1, :, :] = F.pad(gg, (1, padding))
+        return gains.mean(1)
+
+    def compute_energy_loss(self, x, pat, pos):
+        energy = x.pow(2).sum(2)
+        energy_loss = 0.0
+        for c1 in range(self.dims[1]):
+            ep = torch.mul(pat[:, c1:c1 + 1, :, :], pat[:, c1:c1 + 1, :, :]).sum()
+            for c2 in range(self.dims[0]):
+                block = x[c2:c2+1, c1:c1 + 1, :, pos[c2]:pos[c2]+pat.shape[-1]]
+                ex = torch.mul(block, pat[:, c1:c1 + 1, :, :]).sum()
+                residual = block - (ex/ep)*pat[:, c1:c1 + 1, :, :]
+                energy_loss = (energy[c2:c2+1, c1:c1 + 1, pos[c2]:pos[c2]+pat.shape[-1]].sum()
+                               - residual.pow(2).sum())
+        return energy_loss
 
 if __name__ == '__main__':
-    dd = torch.load("specData/spec_fl_zoo_parc_aug25_data_0.pt", weights_only=False)
+    dd = torch.load("specData2/spec_fl_3s_avifauna_flamingos_sept25_data_0.pt", weights_only=False)
     kk = list(dd.keys())
-    x = stack_to_channels(dd[kk[7]]).unsqueeze(0)
-    pat = x[0:1,:,:,20:64];
-    SPC = SpatialPatCorr(x.shape)
-    corr = SPC(x, pat)
-    pcorr = corr.prod(dim=0)
+    N = 1000
+    x = torch.stack([stack_to_channels(dd[kk[c1]]) for c1 in range(N)])
 
+    B = 20
+    res = []
+    energy = x.pow(2).sum(2)
+    patterns = {}
+
+    for c0 in range(N):
+        print(f"Processing {c0}/{N}")
+        for c1 in range(x.shape[-1]-B):
+            pat = x[c0,:,:,c1:c1+B].unsqueeze(0)
+            xpat = subtract_mean(pat)
+            SPC = SpatialPatCorr(x.shape)
+            corr = SPC(x, xpat)
+            pcorr = corr.prod(dim=1)
+
+            pos = pcorr.argmax(2)-1
+
+            el = SPC.compute_energy_loss(x, xpat, pos)
+            res.append([el])
+        p = np.argmax(res)
+        patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+        torch.save(patterns,"selected_patterns.pt")
+    # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())
