@@ -11,11 +11,24 @@ import torch
 from torch import nn
 from torch.functional import F
 
-def stack_to_channels(item):
+from MaxSegmentFinder import MaxSegmentFinder
+
+# Optimization for Blackwell
+torch.set_float32_matmul_precision('medium')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def stack_to_channels_pure(item):
     left = item["left"].flatten(0,1)
-    right = item["right"].flatten(0, 1)
-    # spec = torch.stack([left-left.mean(), right-right.mean()])
+    right = item["right"].flatten(0,1)
     spec = torch.stack([left, right])
+    return spec
+
+def stack_to_channels_mel_spatial(item):
+    spec = item["spec"]
+    coh = item["coh"]
+    angle = item["angle"]
+    # spec = torch.stack([left-left.mean(), right-right.mean()])
+    spec = torch.stack([spec, coh, angle])
 
     return spec
 
@@ -71,30 +84,32 @@ class SpatialPatCorr(nn.Module):
         return energy_loss
 
 if __name__ == '__main__':
-    dd = torch.load("specData2/spec_fl_3s_avifauna_flamingos_sept25_data_0.pt", weights_only=False)
+    dd = torch.load("specPure/spec_fl_blijdorp_flamingos_dec2025_0.pt", weights_only=False)
     kk = list(dd.keys())
-    N = 1000
-    x = torch.stack([stack_to_channels(dd[kk[c1]]) for c1 in range(N)])
+    N = len(kk)
 
-    B = 20
-    res = []
+    stacker = stack_to_channels_pure
+    x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)])
     energy = x.pow(2).sum(2)
     patterns = {}
+    MSF = MaxSegmentFinder()
+    SPC = SpatialPatCorr(x.shape).to(device)
 
     for c0 in range(N):
         print(f"Processing {c0}/{N}")
-        for c1 in range(x.shape[-1]-B):
-            pat = x[c0,:,:,c1:c1+B].unsqueeze(0)
-            xpat = subtract_mean(pat)
-            SPC = SpatialPatCorr(x.shape)
+        res = []
+        try:
+            s, pat0 = MSF.process(x[c0,0,:,:], maxseglen=32)
+            xpat = subtract_mean(x[c0:c0+1,:,:,s[0]:s[1]])
             corr = SPC(x, xpat)
             pcorr = corr.prod(dim=1)
-
             pos = pcorr.argmax(2)-1
+            el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
+            res.append([el.detach().cpu().numpy()])
 
-            el = SPC.compute_energy_loss(x, xpat, pos)
-            res.append([el])
-        p = np.argmax(res)
-        patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+            p = np.argmax(res)
+            patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+        except:
+            print(f"Something broken in {c0}/{N} - omitting")
         torch.save(patterns,"selected_patterns.pt")
     # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())

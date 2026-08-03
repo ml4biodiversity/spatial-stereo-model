@@ -187,13 +187,14 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
 """
 if __name__ == '__main__':
     fpath = "./data/"
+    dataset = "fl_blijdorp_flamingos_dec2025"
 
     spec_path1 ="specData1"
     os.makedirs(spec_path1,exist_ok=True)
-    spec_path2 ="specData2"
+    spec_path2 ="specPure"
     os.makedirs(spec_path2,exist_ok=True)
 
-    files = [str(x) for x in Path(fpath).rglob("*speechless.xlsx")]
+    files = [str(x) for x in Path(fpath+dataset).rglob("*_metadata.xlsx")]
 
     # specProc1 = SpectrumProcessor()
     specProc2 = PureSpectrumProcessor()

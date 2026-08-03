@@ -17,7 +17,7 @@ from avex import load_model, list_models, build_model, describe_model, get_model
 from avex.configs import ProbeConfig
 from avex.models.probes import build_probe_from_config
 import lightning as L
-
+from sklearn.model_selection import train_test_split
 
 
 # Optimization for Blackwell
@@ -36,24 +36,23 @@ class ZooDataset(Dataset):
         return self.meta.shape[0]
 
     def __getitem__(self, idx):
-        sig, sr = librosa.load(self.meta[idx, "audio_file"], sr=16000)
+        sig, sr = librosa.load(self.meta.loc[idx, "audio_file"], sr=16000)
         sig = torch.tensor(sig).unsqueeze(0)
-        return sig, self.meta[idx, "target_index"]
+        return sig, int(self.meta.loc[idx, "target_index"])
 
 
 # Frozen Avex backbone model and a linear probe
 class AvexProbeModel(L.LightningModule):
-    model = None
-    probe_config = None
     def __init__(self):
         super().__init__()
         self.probe_config = ProbeConfig(
             probe_type="linear",
             target_layers=["backbone"],
-            aggregation="mean",
+            aggregation="",
             freeze_backbone=True,
             online_training=True,
         )
+        self.loss_function = torch.nn.CrossEntropyLoss()
 
     def build_probe(self, model_name, num_classes):
         model_spec = get_model_spec(model_name)
@@ -74,7 +73,7 @@ class AvexProbeModel(L.LightningModule):
         # it is independent of forward
         x, yt = batch
         y = self.model(x)
-        loss = nn.functional.cross_entropy(yt, y)
+        loss = self.loss_function(y, torch.LongTensor([yt]).to(device))
         # Logging to TensorBoard (if installed) by default
         self.log("train_loss", loss)
         return loss
@@ -82,7 +81,7 @@ class AvexProbeModel(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, yt = batch
         y = self.model(x)
-        loss = nn.functional.cross_entropy(yt, y)
+        loss = self.loss_function(y,torch.LongTensor([yt]).to(device))
         self.log("val_loss", loss)
         return loss
 
@@ -93,10 +92,37 @@ class AvexProbeModel(L.LightningModule):
 
 if __name__ == '__main__':
     model_name = "esp_aves2_naturelm_audio_v1_beats"
-    num_classes = 30
+    dpath = "/media/kakskyt/data/zoodata/er_path/"
+    files = list(Path(dpath).glob("*flami*"))
+
+    metafiles = [f"{str(f)}/{str(f).split("/")[-1]}_metadata.xlsx" for f in files]
+    num_classes = len(metafiles)
     probe = AvexProbeModel()
     probe.build_probe(model_name, num_classes)
 
-    files = list(Path("./data/").glob("*.xlmx"))
+    meta = pd.read_excel(metafiles[0], index_col=0)
+    for f in metafiles[1:]:
+        meta = pd.concat([meta, pd.read_excel(f, index_col=0)], ignore_index=True)
 
+    names = [str(x).split("/")[-1] for x in files]
+    labelmap = {names[c1]:c1 for c1 in range(len(names))}
+    # Add fields
+    meta["audio_file"] = dpath + meta["filename"]
+    meta["target_name"] = meta["filename"].apply(lambda x: str(x).split("/")[0])
+    meta["target_index"] = meta["target_name"].apply(lambda x: labelmap[x])
 
+    train_files, test_files = train_test_split(meta, test_size=0.05)
+    train_files = train_files.reset_index(drop=True)
+    test_files = test_files.reset_index(drop=True)
+    train_dataset = ZooDataset(train_files)
+    test_dataset = ZooDataset(test_files)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+    )
+    test_dataloader = torch.utils.data.DataLoader(
+        test_dataset,
+    )
+
+    trainer = L.Trainer(max_epochs=8000)
+    trainer.fit(model=probe, train_dataloaders=train_dataloader,
+            val_dataloaders=test_dataloader)

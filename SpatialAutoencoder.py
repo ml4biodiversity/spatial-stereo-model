@@ -71,7 +71,7 @@ def main():
     encoder = ViTEncoder([400,32], embed_dim-Nmeta)
     decoder = DenseModelDecoder(embed_dim, embed_dim, train_loader.input_shape()[1:])
 
-    checkpoint = "lightning_logs/version_58/checkpoints/epoch=605-step=36336.ckpt"
+    checkpoint = "lightning_logs/version_59/checkpoints/epoch=459-step=13800.ckpt"
     # checkpoint = None
 
     if checkpoint is None:
