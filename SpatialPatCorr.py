@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.functional import F
+from pathlib import Path
 
 from MaxSegmentFinder import MaxSegmentFinder
 
@@ -84,32 +85,41 @@ class SpatialPatCorr(nn.Module):
         return energy_loss
 
 if __name__ == '__main__':
-    dd = torch.load("specPure/spec_fl_blijdorp_flamingos_dec2025_0.pt", weights_only=False)
-    kk = list(dd.keys())
-    N = len(kk)
+    dpath = "specPure/"
+    files = sorted([str(x) for x in Path(dpath).rglob("*.pt")])
+    B = 4
+    Nb = int(len(files)/B)
 
-    stacker = stack_to_channels_pure
-    x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)])
-    energy = x.pow(2).sum(2)
-    patterns = {}
-    MSF = MaxSegmentFinder()
-    SPC = SpatialPatCorr(x.shape).to(device)
+    for c0 in range(Nb):
+        print(f"Processing set {c0}/Nb")
+        dd = torch.load(files[B*c0], weights_only=False)
+        for c1 in range(B*c0+1, B*c0+B):
+            dd = dd|torch.load(files[c1], weights_only=False)
+        kk = list(dd.keys())
+        N = len(kk)
 
-    for c0 in range(N):
-        print(f"Processing {c0}/{N}")
-        res = []
-        try:
-            s, pat0 = MSF.process(x[c0,0,:,:], maxseglen=32)
-            xpat = subtract_mean(x[c0:c0+1,:,:,s[0]:s[1]])
-            corr = SPC(x, xpat)
-            pcorr = corr.prod(dim=1)
-            pos = pcorr.argmax(2)-1
-            el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-            res.append([el.detach().cpu().numpy()])
+        stacker = stack_to_channels_pure
+        x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)])
+        energy = x.pow(2).sum(2)
+        patterns = {}
+        MSF = MaxSegmentFinder()
+        SPC = SpatialPatCorr(x.shape).to(device)
 
-            p = np.argmax(res)
-            patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
-        except:
-            print(f"Something broken in {c0}/{N} - omitting")
-        torch.save(patterns,"selected_patterns.pt")
-    # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())
+        for c0 in range(N):
+            print(f"Processing {c0}/{N}")
+            res = []
+            try:
+                s, pat0 = MSF.process(x[c0,0,:,:], maxseglen=32)
+                xpat = subtract_mean(x[c0:c0+1,:,:,s[0]:s[1]])
+                corr = SPC(x, xpat)
+                pcorr = corr.prod(dim=1)
+                pos = pcorr.argmax(2)-1
+                el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
+                res.append([el.detach().cpu().numpy()])
+
+                p = np.argmax(res)
+                patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+            except:
+                print(f"Something broken in {c0}/{N} - omitting")
+        torch.save(patterns,f"selected_patterns_{c0}.pt")
+        # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())

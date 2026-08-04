@@ -156,9 +156,9 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     # Slice to files of StoreSize blocks
     for s1 in range(NumStores):
         print(f"Processing set {s1} of {data_name}")
-        if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
-            print(f"Set {data_name} already done - exiting!")
-            break
+        #if os.path.exists(f"{spec_path}/spec_{data_name}_{0}.pt"):
+        #    print(f"Set {data_name} already done - exiting!")
+        #    break
         specData = {}
         #for c1 in range(meta.shape[0]):
         for c1 in range(StoreSize):            
@@ -196,7 +196,7 @@ if __name__ == '__main__':
 
     files = [str(x) for x in Path(fpath+dataset).rglob("*_metadata.xlsx")]
 
-    # specProc1 = SpectrumProcessor()
+    #specProc1 = SpectrumProcessor()
     specProc2 = PureSpectrumProcessor()
 
     for f in files:
