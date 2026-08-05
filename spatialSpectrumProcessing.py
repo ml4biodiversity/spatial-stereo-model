@@ -184,7 +184,6 @@ if __name__ == '__main__':
     fpath = "./data"
     aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
     aviaries = aviaries["preprocessed_new"].unique()
-
     #specProc1 = SpectrumProcessor()
     #spec_path1 = "./specData1"
     spec_path2 = "./specData2"
