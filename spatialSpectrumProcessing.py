@@ -19,10 +19,8 @@ import subprocess
 from shutil import copyfile
 import scipy.signal as dsp
 import soundfile
-from transformers import AutoModelForAudioClassification
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-
 
 FS = 24000
 
@@ -59,11 +57,8 @@ def get_features(infeat):
 
 
     # Add categorical parameters from auxiliary models
-    model = AutoModelForAudioClassification.from_pretrained("MIT/ast-finetuned-audioset-14-14-0.443")
-    mit_labels = model.config.label2id
-
-    
-
+    # model = AutoModelForAudioClassification.from_pretrained("MIT/ast-finetuned-audioset-14-14-0.443")
+    # mit_labels = model.config.label2id
 
     return feat[fields]
 
@@ -186,24 +181,23 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
     Main script for coherent spectrum processing
 """
 if __name__ == '__main__':
-    fpath = "./data/"
-    dataset = "fl_blijdorp_flamingos_dec2025"
-
-    spec_path1 ="specData1"
-    os.makedirs(spec_path1,exist_ok=True)
-    spec_path2 ="specPure"
-    os.makedirs(spec_path2,exist_ok=True)
-
-    files = [str(x) for x in Path(fpath+dataset).rglob("*_metadata.xlsx")]
+    fpath = "./data"
+    aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
+    aviaries = aviaries["preprocessed_new"].unique()
 
     #specProc1 = SpectrumProcessor()
+    #spec_path1 = "./specData1"
+    spec_path2 = "./specData2"
     specProc2 = PureSpectrumProcessor()
 
-    for f in files:
-        meta = pd.read_excel(f, index_col=0)
-        data_name = f[f.rfind(os.sep) + 1:f.rfind("meta") - 1]
-        # raw_file_processing(specProc1, meta, data_name, fpath, spec_path1)
-        raw_file_processing(specProc2, meta, data_name, fpath, spec_path2)
+    for aviary in aviaries:
+        apath = f"{fpath}/{aviary}"
+        metadata = f"{fpath}/{aviary}/{aviary}_metadata.xlsx"
+        meta = pd.read_excel(metadata, index_col=0)
+        print(f"Processing {aviary} with {meta.shape[0]} rows")
 
-    
+        #raw_file_processing(specProc1, meta, aviary, fpath, spec_path1)
+        raw_file_processing(specProc2, meta, aviary, fpath, spec_path2)
+
+
 

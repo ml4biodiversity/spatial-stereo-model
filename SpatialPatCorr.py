@@ -87,7 +87,7 @@ class SpatialPatCorr(nn.Module):
 if __name__ == '__main__':
     dpath = "specPure/"
     files = sorted([str(x) for x in Path(dpath).rglob("*.pt")])
-    B = 4
+    B = 5
     Nb = int(len(files)/B)
 
     for c0 in range(Nb):
@@ -105,12 +105,12 @@ if __name__ == '__main__':
         MSF = MaxSegmentFinder()
         SPC = SpatialPatCorr(x.shape).to(device)
 
-        for c0 in range(N):
-            print(f"Processing {c0}/{N}")
+        for c1 in range(N):
+            print(f"Processing {c1}/{N}")
             res = []
             try:
-                s, pat0 = MSF.process(x[c0,0,:,:], maxseglen=32)
-                xpat = subtract_mean(x[c0:c0+1,:,:,s[0]:s[1]])
+                s, pat0 = MSF.process(x[c1,0,:,:], maxseglen=32)
+                xpat = subtract_mean(x[c1:c1+1,:,:,s[0]:s[1]])
                 corr = SPC(x, xpat)
                 pcorr = corr.prod(dim=1)
                 pos = pcorr.argmax(2)-1
@@ -118,8 +118,8 @@ if __name__ == '__main__':
                 res.append([el.detach().cpu().numpy()])
 
                 p = np.argmax(res)
-                patterns[c0] = {"pat":x[c0, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+                patterns[c0] = {"pat":x[c1, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
             except:
-                print(f"Something broken in {c0}/{N} - omitting")
-        torch.save(patterns,f"selected_patterns_{c0}.pt")
+                print(f"Something broken in {c1}/{N} in set {c0}- omitting")
+        torch.save(patterns,f"selected/selected_patterns_{c0}.pt")
         # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())
