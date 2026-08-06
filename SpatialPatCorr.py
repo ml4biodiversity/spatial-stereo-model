@@ -77,17 +77,20 @@ class SpatialPatCorr(nn.Module):
         for c1 in range(self.dims[1]):
             ep = torch.mul(pat[:, c1:c1 + 1, :, :], pat[:, c1:c1 + 1, :, :]).sum()
             for c2 in range(self.dims[0]):
+ #               try:
                 block = x[c2:c2+1, c1:c1 + 1, :, pos[c2]:pos[c2]+pat.shape[-1]]
                 ex = torch.mul(block, pat[:, c1:c1 + 1, :, :]).sum()
                 residual = block - (ex/ep)*pat[:, c1:c1 + 1, :, :]
-                energy_loss = (energy[c2:c2+1, c1:c1 + 1, pos[c2]:pos[c2]+pat.shape[-1]].sum()
+                energy_loss += (energy[c2:c2+1, c1:c1 + 1, pos[c2]:pos[c2]+pat.shape[-1]].sum()
                                - residual.pow(2).sum())
+#                except:
+#                    pass
         return energy_loss
 
 if __name__ == '__main__':
     dpath = "specPure/"
     files = sorted([str(x) for x in Path(dpath).rglob("*.pt")])
-    B = 5
+    B = 4
     Nb = int(len(files)/B)
 
     for c0 in range(Nb):
@@ -96,10 +99,12 @@ if __name__ == '__main__':
         for c1 in range(B*c0+1, B*c0+B):
             dd = dd|torch.load(files[c1], weights_only=False)
         kk = list(dd.keys())
-        N = len(kk)
 
+        N = len(kk)
         stacker = stack_to_channels_pure
-        x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)])
+        x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)
+                         if dd[kk[c1]]["meta"]["MIT_AST_label"] != "Speech"])
+        N = x.shape[0] # update N due to removed Speech samples
         energy = x.pow(2).sum(2)
         patterns = {}
         MSF = MaxSegmentFinder()
@@ -107,7 +112,6 @@ if __name__ == '__main__':
 
         for c1 in range(N):
             print(f"Processing {c1}/{N}")
-            res = []
             try:
                 s, pat0 = MSF.process(x[c1,0,:,:], maxseglen=32)
                 xpat = subtract_mean(x[c1:c1+1,:,:,s[0]:s[1]])
@@ -115,11 +119,8 @@ if __name__ == '__main__':
                 pcorr = corr.prod(dim=1)
                 pos = pcorr.argmax(2)-1
                 el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-                res.append([el.detach().cpu().numpy()])
-
-                p = np.argmax(res)
-                patterns[c0] = {"pat":x[c1, :, :, p:p + B].unsqueeze(0), "pos":p, "max":max(res)}
+                patterns[c1] = {"pat":x[c1, :, :, p:p + B].unsqueeze(0), "pos":p, "max":el}
             except:
-                print(f"Something broken in {c1}/{N} in set {c0}- omitting")
-        torch.save(patterns,f"selected/selected_patterns_{c0}.pt")
-        # a = (torch.mul(x[0:1,:,:,20:64], pat).sum())/(torch.mul(pat, pat).sum())
+                print(f"Something broken in {c1}/{N} - omitting")
+                break
+        torch.save(patterns,f"selected_patterns_{c0}.pt")

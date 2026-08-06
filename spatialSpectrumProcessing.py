@@ -19,8 +19,10 @@ import subprocess
 from shutil import copyfile
 import scipy.signal as dsp
 import soundfile
+from transformers import AutoModelForAudioClassification
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 
 FS = 24000
 
@@ -57,8 +59,11 @@ def get_features(infeat):
 
 
     # Add categorical parameters from auxiliary models
-    # model = AutoModelForAudioClassification.from_pretrained("MIT/ast-finetuned-audioset-14-14-0.443")
-    # mit_labels = model.config.label2id
+    model = AutoModelForAudioClassification.from_pretrained("MIT/ast-finetuned-audioset-14-14-0.443")
+    mit_labels = model.config.label2id
+
+    
+
 
     return feat[fields]
 
@@ -184,9 +189,9 @@ if __name__ == '__main__':
     fpath = "./data"
     aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
     aviaries = aviaries["preprocessed_new"].unique()
+    spec_path1 = "specData1"
+    spec_path2 = "specData2"
     #specProc1 = SpectrumProcessor()
-    #spec_path1 = "./specData1"
-    spec_path2 = "./specData2"
     specProc2 = PureSpectrumProcessor()
 
     for aviary in aviaries:
@@ -198,5 +203,5 @@ if __name__ == '__main__':
         #raw_file_processing(specProc1, meta, aviary, fpath, spec_path1)
         raw_file_processing(specProc2, meta, aviary, fpath, spec_path2)
 
-
+    
 
