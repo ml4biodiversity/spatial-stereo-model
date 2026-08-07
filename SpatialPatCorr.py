@@ -119,7 +119,7 @@ if __name__ == '__main__':
                 pcorr = corr.prod(dim=1)
                 pos = pcorr.argmax(2)-1
                 el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-                patterns[c1] = {"pat":x[c1, :, :, p:p + B].unsqueeze(0), "pos":p, "max":el}
+                patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el}
             except:
                 print(f"Something broken in {c1}/{N} - omitting")
                 break

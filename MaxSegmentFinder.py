@@ -9,7 +9,6 @@ Copyright (c) Aki Härmä, DACS/FSE, Maastricht University, 2024
 
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 
 class MaxSegmentFinder():
     def find_max_segment(self, sig):
