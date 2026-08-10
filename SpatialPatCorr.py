@@ -4,6 +4,15 @@
 @License: See license file is in the root of the repository.
 @Desc  :
 
+This implements
+     1. Select >>C pattern candidates.
+     2. Score the goodness of the patterns on data.
+
+of the ICASSP'27 Greedy Pattern Selection method
+
+Note: This script does not yet perform scoring at a day level - we do that now
+in steps 3-4!
+
 Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
 import numpy as np
@@ -13,32 +22,15 @@ from torch.functional import F
 from pathlib import Path
 
 from MaxSegmentFinder import MaxSegmentFinder
+from ChannelStackers import *
 
 # Optimization for Blackwell
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def stack_to_channels_pure(item):
-    left = item["left"].flatten(0,1)
-    right = item["right"].flatten(0,1)
-    spec = torch.stack([left, right])
-    return spec
-
-def stack_to_channels_mel_spatial(item):
-    spec = item["spec"]
-    coh = item["coh"]
-    angle = item["angle"]
-    # spec = torch.stack([left-left.mean(), right-right.mean()])
-    spec = torch.stack([spec, coh, angle])
-
-    return spec
-
-
 def subtract_mean(x):
     return torch.subtract(x[:, :, :, :].permute([0, 3, 2, 1]),
                           x.mean([2, 3])[0]).permute([0, 3, 2, 1])
-
-
 
 
 class SpatialPatCorr(nn.Module):
@@ -98,13 +90,12 @@ if __name__ == '__main__':
         dd = torch.load(files[B*c0], weights_only=False)
         for c1 in range(B*c0+1, B*c0+B):
             dd = dd|torch.load(files[c1], weights_only=False)
-        kk = list(dd.keys())
 
-        N = len(kk)
+        keys = [k for k in dd.keys() if dd[k]["meta"]["MIT_AST_label"] != "Speech"]
+        N = len(keys)
         stacker = stack_to_channels_pure
-        x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)
-                         if dd[kk[c1]]["meta"]["MIT_AST_label"] != "Speech"])
-        N = x.shape[0] # update N due to removed Speech samples
+        x = torch.stack([stacker(dd[k]) for k in keys])
+
         energy = x.pow(2).sum(2)
         patterns = {}
         MSF = MaxSegmentFinder()
@@ -119,7 +110,8 @@ if __name__ == '__main__':
                 pcorr = corr.prod(dim=1)
                 pos = pcorr.argmax(2)-1
                 el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-                patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el}
+                patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el,
+                                "key":keys[c1], "meta":dd[keys[c1]]["meta"]}
             except:
                 print(f"Something broken in {c1}/{N} - omitting")
                 break
