@@ -61,13 +61,13 @@ def select_patterns(patterns, D):
     # xx = hdb.fit_predict(X_transformed)
     number_of_patterns = 256
     cluster = KMeans(n_clusters=number_of_patterns, random_state=0).fit(X_transformed)
-    keys = patterns.keys()
+    keys = list(patterns.keys())
     selected_patterns = {}
 
     for c0 in range(number_of_patterns):
         sel = [int(c) for c in np.where(cluster.labels_ == c0)[0]]
-        winner = int(np.argmax([patterns[c1]["max"] for c1 in sel]))
-        selected_patterns[c0] = patterns[sel[winner]]
+        winner = int(np.argmax([patterns[keys[c1]]["max"] for c1 in sel]))
+        selected_patterns[keys[sel[winner]]] = patterns[keys[sel[winner]]]
     return selected_patterns
 
 
