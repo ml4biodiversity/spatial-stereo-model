@@ -56,6 +56,7 @@ if __name__ == '__main__':
 
     reorg = reorg.reset_index(drop=True)
 
+
     groups = reorg.groupby(["dataname", "weekday_number"])
 
     for gname, gdata in groups:
