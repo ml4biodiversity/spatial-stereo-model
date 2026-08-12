@@ -48,7 +48,7 @@ class SpatialPatCorr(nn.Module):
         return F.pad(corr, (1, padding))
 
     def forward(self, x, pat):
-        unit = torch.ones([1, 1, self.dims[2], pat.shape[3]])
+        unit = torch.ones([1, 1, self.dims[2], pat.shape[3]]).to(device)
         corrs = torch.zeros([x.shape[0], self.dims[1], 1, self.dims[3]])
         for c1 in range(self.dims[1]):
             corrs[:,c1:c1+1,:,:] = self.single_channel(x[:,c1:c1+1,:,:], pat[:,c1:c1+1,:,:], unit)
