@@ -4,33 +4,46 @@
 @License: See license file is in the root of the repository.
 @Desc  :
 
-This implements
-     1. Select >>C pattern candidates.
-     2. Score the goodness of the patterns on data.
-
-of the ICASSP'27 Greedy Pattern Selection method
-
-Note: This script does not yet perform scoring at a day level - we do that now
-in steps 3-4!
-
 Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
+import os
+
 import numpy as np
 import torch
 from torch import nn
 from torch.functional import F
 from pathlib import Path
+import pandas as pd
+from SliceAviariesDays import *
 
 from MaxSegmentFinder import MaxSegmentFinder
-from ChannelStackers import *
+
+SPECMODEL = 1
 
 # Optimization for Blackwell
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def stack_to_channels(item):
+    if SPECMODEL == 1:
+        spec = item["left"]
+        coh = item["right"]
+        angle = item["cc"]
+        spec = torch.stack([spec, coh, angle])
+        return spec
+    if SPECMODEL == 2:
+        left = item["left"].flatten(0, 1)
+        right = item["right"].flatten(0, 1)
+        spec = torch.stack([left, right])
+        return spec
+    return None
+
+
 def subtract_mean(x):
     return torch.subtract(x[:, :, :, :].permute([0, 3, 2, 1]),
                           x.mean([2, 3])[0]).permute([0, 3, 2, 1])
+
+
 
 
 class SpatialPatCorr(nn.Module):
@@ -80,39 +93,45 @@ class SpatialPatCorr(nn.Module):
         return energy_loss
 
 if __name__ == '__main__':
-    dpath = "specPure/"
-    files = sorted([str(x) for x in Path(dpath).rglob("*.pt")])
-    B = 4
-    Nb = int(len(files)/B)
+    dpath = f"specData{SPECMODEL}"
+    outpath = f"extracted_patterns_{SPECMODEL}"
+    os.makedirs(outpath, exist_ok=True)
+    aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
+    aviaries = aviaries["preprocessed_new"].unique()
+    stacker = stack_to_channels
 
-    for c0 in range(Nb):
-        print(f"Processing set {c0}/Nb")
-        dd = torch.load(files[B*c0], weights_only=False)
-        for c1 in range(B*c0+1, B*c0+B):
-            dd = dd|torch.load(files[c1], weights_only=False)
+    for avi in aviaries:
+        files = sorted([str(x) for x in Path(dpath).rglob(f"*_{avi}_*")])
+        groups = create_aviary_day_table(files)
+        for gname, gdata in groups:
+            print(f"Processing set {gname}")
+            these_files = gdata["pattern_file"].unique()
+            dd = torch.load(these_files[0], weights_only=False)
+            for f in these_files:
+                dd = dd|torch.load(f, weights_only=False)
+            kk = list(dd.keys())
 
-        keys = [k for k in dd.keys() if dd[k]["meta"]["MIT_AST_label"] != "Speech"]
-        N = len(keys)
-        stacker = stack_to_channels_pure
-        x = torch.stack([stacker(dd[k]) for k in keys])
+            N = len(kk)
 
-        energy = x.pow(2).sum(2)
-        patterns = {}
-        MSF = MaxSegmentFinder()
-        SPC = SpatialPatCorr(x.shape).to(device)
+            x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)
+                             if dd[kk[c1]]["meta"]["MIT_AST_label"] != "Speech"]).to(device)
+            N = x.shape[0] # update N due to removed Speech samples
+            energy = x.pow(2).sum(2)
+            patterns = {}
+            MSF = MaxSegmentFinder()
+            SPC = SpatialPatCorr(x.shape).to(device)
 
-        for c1 in range(N):
-            print(f"Processing {c1}/{N}")
-            try:
-                s, pat0 = MSF.process(x[c1,0,:,:], maxseglen=32)
-                xpat = subtract_mean(x[c1:c1+1,:,:,s[0]:s[1]])
-                corr = SPC(x, xpat)
-                pcorr = corr.prod(dim=1)
-                pos = pcorr.argmax(2)-1
-                el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-                patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el,
-                                "key":keys[c1], "meta":dd[keys[c1]]["meta"]}
-            except:
-                print(f"Something broken in {c1}/{N} - omitting")
-                break
-        torch.save(patterns,f"selected_patterns_{c0}.pt")
+            for c1 in range(N):
+                print(f"Processing {c1}/{N}")
+                try:
+                    s, pat0 = MSF.process(x[c1,0,:,:].detach().cpu(), maxseglen=32)
+                    xpat = subtract_mean(x[c1:c1+1,:,:,s[0]:s[1]])
+                    corr = SPC(x, xpat)
+                    pcorr = corr.prod(dim=1)
+                    pos = pcorr.argmax(2)-1
+                    el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
+                    patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el}
+                except:
+                    print(f"Something broken in {c1}/{N} - omitting")
+                    break
+            torch.save(patterns,f"{outpath}/sel_pat_{gname[0]}_day_{int(gname[1])}.pt")
