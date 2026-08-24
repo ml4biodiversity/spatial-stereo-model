@@ -29,19 +29,17 @@ def reverse_modulo_weekdays_inplace(data):
     del data["tmp"]
 
 """
-    Main script call for the mapping
+    Create a table that has for a give collection of data files a group table 
+    with aviaries and consecutive days.
 """
-if __name__ == '__main__':
-    dpath = "selected_patterns/"
-    outpath = "extracted_patterns/"
-    os.makedirs(outpath, exist_ok=True)
-
-    files = sorted([str(x).replace("\\", "/") for x in Path(dpath).rglob("*.pt")])
-
+def create_aviary_day_table(files):
     allfiles = pd.DataFrame(columns=['pattern_file', 'filename', 'dataname', 'datetime'])
     for f in files:
         d = torch.load(f, map_location=torch.device('cpu'), weights_only=False)
         keys = list(d.keys())
+        if "key" not in d[keys[0]]:
+            for k in keys:
+                d[k]["key"] = k
         df = pd.DataFrame({k: select_fields(d[k]) for k in keys}).T
         df["pattern_file"] = f
         allfiles = pd.concat([allfiles, df], ignore_index=True)
@@ -55,14 +53,35 @@ if __name__ == '__main__':
         reorg = pd.concat([reorg, sel_a], ignore_index=True)
 
     reorg = reorg.reset_index(drop=True)
-
-
     groups = reorg.groupby(["dataname", "weekday_number"])
+    return groups
+
+
+"""
+    Main script call for the mapping
+"""
+if __name__ == '__main__':
+    dpath = "selected_patterns/"
+    outpath = "extracted_patterns/"
+    os.makedirs(outpath, exist_ok=True)
+
+    files = sorted([str(x).replace("\\", "/") for x in Path(dpath).rglob("*.pt")])
+
+    groups = create_aviary_day_table(files)
 
     for gname, gdata in groups:
         data = {}
-        for f in gdata["pattern_file"].unique():
-            d = torch.load(f, map_location=torch.device('cpu'), weights_only=False)
-            dd = {d[k]["key"]: d[k] for k in d.keys()}  # Fix key (number->file name)
-            data = data | {k: dd[k] for k in list(gdata[gdata["pattern_file"] == f]["filename"])}
+        if os.path.exists(outpath + f"{gname[0]}_day_{int(gname[1])}.pt"):
+            print(f"{gname[0]} - day {gname[1]} - size {gdata.shape} exists - skipping")
+            continue
+        else:
+            print(f"Processing {gname[0]} - day {gname[1]} - size {gdata.shape}")
+
+
+        for f in gdata["pattern_file"].unique()[:4]:
+            d = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
+            dd = {d[k]["key"]: d[k] for k in d.keys() if d[k]["key"].find(gname[0])>-1}  # Fix key (number->file name)
+            data = data | {k: dd[k] for k in
+                           list(gdata[gdata["pattern_file"] == f]["filename"])}
+
         torch.save(data, outpath + f"{gname[0]}_day_{int(gname[1])}.pt")
