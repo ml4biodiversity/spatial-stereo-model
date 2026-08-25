@@ -92,6 +92,23 @@ class SpatialPatCorr(nn.Module):
                     pass
         return energy_loss
 
+
+    def compute_residual_in_place(self, x, pat, pos):
+        energy = x.pow(2).sum(2)
+        energy_loss = 0.0
+        for c1 in range(self.dims[1]):
+            ep = torch.mul(pat[:, c1:c1 + 1, :, :], pat[:, c1:c1 + 1, :, :]).sum()
+            for c2 in range(self.dims[0]):
+                #               try:
+                block = x[c2:c2 + 1, c1:c1 + 1, :, pos[c2]:pos[c2] + pat.shape[-1]]
+                ex = torch.mul(block, pat[:, c1:c1 + 1, :, :]).sum()
+                residual = block - (ex / ep) * pat[:, c1:c1 + 1, :, :]
+                x[c2:c2 + 1, c1:c1 + 1, :, pos[c2]:pos[c2] + pat.shape[-1]] = residual
+        #                except:
+        #                    pass
+        return x
+
+
 if __name__ == '__main__':
     dpath = f"specData{SPECMODEL}"
     outpath = f"extracted_patterns_{SPECMODEL}"
