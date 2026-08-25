@@ -49,7 +49,7 @@ def compute_residual(xin, patterns, pkeys, df):
 
 
 
-pattern_path = f"clustered_patterns_{SPECMODEL}"
+pattern_path = f"clustered_patterns"
 data_path = f"specData_{SPECMODEL}"
 
 # Filenames
@@ -58,7 +58,7 @@ pattern_files = sorted([str(x) for x in Path(pattern_path).rglob("*.pt")])
 
 # Load data samples
 dd = torch.load(data_files[0], weights_only=False)
-for df in data_files[1:20]:
+for df in data_files[1:10]:
     dd = dd|torch.load(df, weights_only=False, map_location=torch.device('cpu'))
 
 keys = [k for k in dd.keys() if dd[k]["meta"]["MIT_AST_label"] != "Speech"]
