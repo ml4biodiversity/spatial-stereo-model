@@ -171,6 +171,22 @@ def raw_file_processing(specProc, meta, data_name, data_path, spec_path):
         torch.save(specData, f"{spec_path}/spec_{data_name}_{s1}.pt")            
                 
 
+""" 
+     The processing (ICASSP 2027 code)
+"""
+def preprocessing(meta, config):
+    specProc = None
+    if config["spectrum_processing"] == "melcc":
+        specProc = SpectrumProcessor()
+    if  config["spectrum_processing"] == "stft":
+        specProc = PureSpectrumProcessor()
+
+    data_name = config["aviary"]
+    spec_path = f"specData_{config["spectrum_processing"]}"
+    os.makedirs(spec_path, exist_ok=True)
+    raw_file_processing(specProc, meta, data_name, config["data_path"], spec_path)
+
+
 """
     Main script for coherent spectrum processing
 """
