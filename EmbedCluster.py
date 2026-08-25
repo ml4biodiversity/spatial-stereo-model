@@ -23,11 +23,11 @@ from sklearn.cluster import HDBSCAN, KMeans
 from ChannelStackers import *
 from SpatialPatCorr import SpatialPatCorr
 
-
 # Optimization for Blackwell
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+SPECMODEL = 2
 
 def compute_distance_matrix(pats):
     stacker = pat_to_max_size
@@ -60,6 +60,8 @@ def select_patterns(patterns, D):
     # hdb = HDBSCAN(min_cluster_size=4)
     # xx = hdb.fit_predict(X_transformed)
     number_of_patterns = 256
+    if len(patterns)<number_of_patterns:
+        number_of_patterns = len(patterns)
     cluster = KMeans(n_clusters=number_of_patterns, random_state=0).fit(X_transformed)
     keys = list(patterns.keys())
     selected_patterns = {}
@@ -72,17 +74,24 @@ def select_patterns(patterns, D):
 
 
 if __name__ == '__main__':
-    inpath = "extracted_patterns"
-    outpath = "clustered_patterns"
+    inpath = f"extracted_patterns_{SPECMODEL}"
+    outpath = f"clustered_patterns_{SPECMODEL}"
     os.makedirs(outpath, exist_ok=True)
+    SET = 4
+    aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
+    aviaries = aviaries["preprocessed_new"].unique()
+    for avi in aviaries:
+        files = sorted([str(x) for x in Path(inpath).rglob(f"*_{avi}_*")])
+        print(f"Processing set {avi} of {len(files)} files")
+        Ns = int(len(files)/SET)
+        for c1 in range(Ns):
+            print(f"Processing subset {c1}/{Ns} of {avi} of {len(files)} files")
+            this_files = files[c1*SET:(c1+1)*SET]
+            patterns = torch.load(this_files[0], weights_only=False, map_location=torch.device('cpu'))
+            for f in this_files[1:]:
+                patterns = patterns|torch.load(f, weights_only=False, map_location=torch.device('cpu'))
 
-    files = [str(f).replace("\\","/") for f in Path(inpath).glob("*.pt")]
-
-    for f in files:
-        print(f"Processing clustering and selection of patterns from {f}")
-        site, day = f.replace(".pt", "").split("/")[-1].split("_day_")
-        patterns = torch.load(f, weights_only=False, map_location=torch.device('cpu'))
-        D = compute_distance_matrix(patterns)
-        optimized_patterns = select_patterns(patterns, D)
-        torch.save(optimized_patterns, outpath + "/" + site + f"_patterns_day_{day}.pt")
+            D = compute_distance_matrix(patterns)
+            optimized_patterns = select_patterns(patterns, D)
+            torch.save(optimized_patterns, outpath + "/" + avi + f"_patterns_{c1}.pt")
 

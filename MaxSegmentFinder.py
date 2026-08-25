@@ -31,8 +31,8 @@ class MaxSegmentFinder():
             if down-up<maxseglen:
                 found = True
                 break
-        if not found: 
-            return None, None            
+        if not found:
+            up, down = 10, 10 + int(maxseglen / 2)
         return [up, down], spec[:,up:down]
             
 

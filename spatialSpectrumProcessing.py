@@ -86,7 +86,6 @@ class SpectrumProcessor(data.Dataset):
         f = self.specProcessor(sig)
         # Cross-correlation spectra
         cc = torch.mul(f[0,:,:].conj(),f[1,:,:])    
-        sp = self.melProcessor(sig[0,:]+sig[1,:])
         # Sum real and complex parts
         rmcc = self.melProcessor.mel_scale(cc.real)
         imcc = self.melProcessor.mel_scale(cc.imag)
@@ -94,9 +93,7 @@ class SpectrumProcessor(data.Dataset):
         z = torch.complex(rmcc, imcc).abs()
         ang = torch.complex(rmcc, imcc).angle()                            
         sp = self.melProcessor(sig[0,:]+sig[1,:])
-        lsp = 20*np.log(np.abs(sp)+0.00001)
-        lsp[lsp<-120]=-120
-        return lsp, z, ang/np.pi
+        return sp, z, ang/np.pi
                          
         
     def __len__(self):

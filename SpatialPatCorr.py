@@ -18,7 +18,7 @@ from SliceAviariesDays import *
 
 from MaxSegmentFinder import MaxSegmentFinder
 
-SPECMODEL = 1
+SPECMODEL = 2
 
 # Optimization for Blackwell
 torch.set_float32_matmul_precision('medium')
@@ -45,7 +45,6 @@ def subtract_mean(x):
 
 
 
-
 class SpatialPatCorr(nn.Module):
     def __init__(self, dims):
         super(SpatialPatCorr, self).__init__()
@@ -64,7 +63,8 @@ class SpatialPatCorr(nn.Module):
         unit = torch.ones([1, 1, self.dims[2], pat.shape[3]]).to(device)
         corrs = torch.zeros([x.shape[0], self.dims[1], 1, self.dims[3]])
         for c1 in range(self.dims[1]):
-            corrs[:,c1:c1+1,:,:] = self.single_channel(x[:,c1:c1+1,:,:], pat[:,c1:c1+1,:,:], unit)
+            corrs[:,c1:c1+1,:,:] = self.single_channel(x[:,c1:c1+1,:,:],
+                                                       pat[:,c1:c1+1,:,:], unit.to(device))
         return corrs
 
     def compute_gain(self, x, pat):
@@ -82,14 +82,14 @@ class SpatialPatCorr(nn.Module):
         for c1 in range(self.dims[1]):
             ep = torch.mul(pat[:, c1:c1 + 1, :, :], pat[:, c1:c1 + 1, :, :]).sum()
             for c2 in range(self.dims[0]):
- #               try:
-                block = x[c2:c2+1, c1:c1 + 1, :, pos[c2]:pos[c2]+pat.shape[-1]]
-                ex = torch.mul(block, pat[:, c1:c1 + 1, :, :]).sum()
-                residual = block - (ex/ep)*pat[:, c1:c1 + 1, :, :]
-                energy_loss += (energy[c2:c2+1, c1:c1 + 1, pos[c2]:pos[c2]+pat.shape[-1]].sum()
-                               - residual.pow(2).sum())
-#                except:
-#                    pass
+                try:
+                    block = x[c2:c2+1, c1:c1 + 1, :, pos[c2]:pos[c2]+pat.shape[-1]]
+                    ex = torch.mul(block, pat[:, c1:c1 + 1, :, :]).sum()
+                    residual = block - (ex/ep)*pat[:, c1:c1 + 1, :, :]
+                    energy_loss += (energy[c2:c2+1, c1:c1 + 1, pos[c2]:pos[c2]+pat.shape[-1]].sum()
+                                   - residual.pow(2).sum())
+                except:
+                    pass
         return energy_loss
 
 if __name__ == '__main__':
@@ -99,39 +99,36 @@ if __name__ == '__main__':
     aviaries = pd.read_excel("ICASSP27_birds.xlsx",index_col=0)
     aviaries = aviaries["preprocessed_new"].unique()
     stacker = stack_to_channels
+    MSF = MaxSegmentFinder()
 
     for avi in aviaries:
         files = sorted([str(x) for x in Path(dpath).rglob(f"*_{avi}_*")])
-        groups = create_aviary_day_table(files)
-        for gname, gdata in groups:
-            print(f"Processing set {gname}")
-            these_files = gdata["pattern_file"].unique()
-            dd = torch.load(these_files[0], weights_only=False)
-            for f in these_files:
-                dd = dd|torch.load(f, weights_only=False)
+        print(f"Processing set {avi} of {len(files)} files")
+        for f in files:
+            print(f"Processing {f}")
+            dd = torch.load(f, weights_only=False)
             kk = list(dd.keys())
-
             N = len(kk)
-
             x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)
                              if dd[kk[c1]]["meta"]["MIT_AST_label"] != "Speech"]).to(device)
-            N = x.shape[0] # update N due to removed Speech samples
+            N = x.shape[0]
             energy = x.pow(2).sum(2)
             patterns = {}
-            MSF = MaxSegmentFinder()
+
             SPC = SpatialPatCorr(x.shape).to(device)
 
-            for c1 in range(N):
-                print(f"Processing {c1}/{N}")
+            for c2 in range(N):
                 try:
-                    s, pat0 = MSF.process(x[c1,0,:,:].detach().cpu(), maxseglen=32)
-                    xpat = subtract_mean(x[c1:c1+1,:,:,s[0]:s[1]])
+                    s, pat0 = MSF.process(x[c2,0,:,:].detach().cpu().abs().log(), maxseglen=32)
+                    xpat = subtract_mean(x[c2:c2+1,:,:,s[0]:s[1]])
                     corr = SPC(x, xpat)
                     pcorr = corr.prod(dim=1)
                     pos = pcorr.argmax(2)-1
                     el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
-                    patterns[c1] = {"pat":x[c1, :, :, s[0]:s[1]].unsqueeze(0), "pos":s[0], "max":el}
+                    patterns[c2] = {"pat":x[c2, :, :, s[0]:s[1]].unsqueeze(0),
+                                    "pos":s[0], "max":el}
                 except:
-                    print(f"Something broken in {c1}/{N} - omitting")
+                    print(f"Something broken in {f}  file {c2}/{N} - omitting")
                     break
-            torch.save(patterns,f"{outpath}/sel_pat_{gname[0]}_day_{int(gname[1])}.pt")
+
+            torch.save(patterns,f"{outpath}/sel_pat_{f.split("/")[1][:-3]}.pt")
