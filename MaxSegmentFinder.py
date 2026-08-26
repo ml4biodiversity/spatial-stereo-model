@@ -26,7 +26,7 @@ class MaxSegmentFinder():
         env = env-env.min()
         maxenv = env.max()
         found = False
-        for th in np.arange(maxenv):
+        for th in np.arange(int(maxenv)):
             up, down = self.find_max_segment(env-th)            
             if down-up<maxseglen:
                 found = True

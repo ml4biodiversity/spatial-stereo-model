@@ -7,7 +7,6 @@
 Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 """
 import os
-
 import numpy as np
 import torch
 from torch import nn
@@ -24,19 +23,18 @@ SPECMODEL = 2
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def stack_to_channels(item):
-    if SPECMODEL == 1:
-        spec = item["left"]
-        coh = item["right"]
-        angle = item["cc"]
-        spec = torch.stack([spec, coh, angle])
-        return spec
-    if SPECMODEL == 2:
-        left = item["left"].flatten(0, 1)
-        right = item["right"].flatten(0, 1)
-        spec = torch.stack([left, right])
-        return spec
-    return None
+def stack_to_channels_melcc(item):
+    spec = item["left"]
+    coh = item["right"]
+    angle = item["cc"]
+    spec = torch.stack([spec, coh, angle])
+    return spec
+
+def stack_to_channels_stft(item):
+    left = item["left"].flatten(0, 1)
+    right = item["right"].flatten(0, 1)
+    spec = torch.stack([left, right])
+    return spec
 
 
 def subtract_mean(x):
@@ -109,6 +107,47 @@ class SpatialPatCorr(nn.Module):
         return x
 
 
+def extract_patterns(config):
+    if config["spectrum_processing"] == "melcc":
+        stacker = stack_to_channels_melcc
+    if config["spectrum_processing"] == "stft":
+        stacker = stack_to_channels_stft
+    MSF = MaxSegmentFinder()
+
+    specPath = f"./specData_{config["spectrum_processing"]}"
+    outpath = f"extracted_patterns_{config["spectrum_processing"]}"
+    os.makedirs(outpath, exist_ok=True)
+    data_name = config["aviary"]
+    files = sorted([str(x).replace("\\","/") for x in Path(specPath).rglob(f"*_{data_name}_*")])
+    for f in files:
+        print(f"Processing {f}")
+        dd = torch.load(f, weights_only=False)
+        kk = list(dd.keys())
+        N = len(kk)
+        x = torch.stack([stacker(dd[kk[c1]]) for c1 in range(N)
+                         if dd[kk[c1]]["meta"]["MIT_AST_label"] != "Speech"]).to(device)
+        N = x.shape[0]
+        energy = x.pow(2).sum(2)
+        patterns = {}
+
+        SPC = SpatialPatCorr(x.shape).to(device)
+
+        for c2 in range(N):
+            try:
+                s, pat0 = MSF.process((x[c2, 0, :, :].detach().cpu().abs()+0.000001).log(), maxseglen=32)
+                xpat = subtract_mean(x[c2:c2 + 1, :, :, s[0]:s[1]])
+                corr = SPC(x, xpat)
+                pcorr = corr.prod(dim=1)
+                pos = pcorr.argmax(2) - 1
+                el = SPC.compute_energy_loss(x.to(device), xpat.to(device), pos)
+                patterns[c2] = {"pat": x[c2, :, :, s[0]:s[1]].unsqueeze(0),
+                                "pos": s[0], "max": el}
+            except:
+                print(f"Something broken in {f}  file {c2}/{N} - omitting")
+                break
+
+        torch.save(patterns, f"{outpath}/sel_pat_{f.split("/")[1][:-3]}.pt")
+
 if __name__ == '__main__':
     dpath = f"specData{SPECMODEL}"
     outpath = f"extracted_patterns_{SPECMODEL}"
@@ -119,7 +158,7 @@ if __name__ == '__main__':
     MSF = MaxSegmentFinder()
 
     for avi in aviaries:
-        files = sorted([str(x) for x in Path(dpath).rglob(f"*_{avi}_*")])
+        files = sorted([str(x).replace("\\\\","/") for x in Path(dpath).rglob(f"*_{avi}_*")])
         print(f"Processing set {avi} of {len(files)} files")
         for f in files:
             print(f"Processing {f}")

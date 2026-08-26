@@ -46,53 +46,56 @@ def compute_residual(xin, patterns, pkeys, df):
     return x, E
 
 
+"""
+    Callable function for extracted patterns and data
+"""
+def measure_goodness(config):
+    pattern_path = f"clustered_patterns_{config["spectrum_processing"]}_{config["tsne_kmeans"]}"
+    data_path = f"specData_{config["spectrum_processing"]}"
 
+    # to be continued!
 
+    # Filenames
+    data_files = sorted([str(x) for x in Path(data_path).rglob("*.pt")])
+    pattern_files = sorted([str(x) for x in Path(pattern_path).rglob("*.pt")])
 
-pattern_path = f"clustered_patterns"
-data_path = f"specData_{SPECMODEL}"
+    # Load data samples
+    dd = torch.load(data_files[0], weights_only=False)
+    for df in data_files[1:10]:
+        dd = dd|torch.load(df, weights_only=False, map_location=torch.device('cpu'))
 
-# Filenames
-data_files = sorted([str(x) for x in Path(data_path).rglob("*.pt")])
-pattern_files = sorted([str(x) for x in Path(pattern_path).rglob("*.pt")])
+    keys = [k for k in dd.keys() if dd[k]["meta"]["MIT_AST_label"] != "Speech"]
+    N = len(keys)
+    stacker = stack_to_channels_pure
+    x = torch.stack([stacker(dd[k]) for k in keys])
 
-# Load data samples
-dd = torch.load(data_files[0], weights_only=False)
-for df in data_files[1:10]:
-    dd = dd|torch.load(df, weights_only=False, map_location=torch.device('cpu'))
+    # Load patterns
+    patterns = torch.load(pattern_files[0], weights_only=False, map_location=torch.device('cpu'))
+    for pf in pattern_files[1:]:
+        patterns = patterns | torch.load(pf, weights_only=False, map_location=torch.device('cpu'))
+    pkeys = list(patterns.keys())
 
-keys = [k for k in dd.keys() if dd[k]["meta"]["MIT_AST_label"] != "Speech"]
-N = len(keys)
-stacker = stack_to_channels_pure
-x = torch.stack([stacker(dd[k]) for k in keys])
+    CRE = []
+    E = []
+    SPC = SpatialPatCorr(x.shape).to(device)
 
-# Load patterns
-patterns = torch.load(pattern_files[0], weights_only=False, map_location=torch.device('cpu'))
-for pf in pattern_files[1:]:
-    patterns = patterns | torch.load(pf, weights_only=False, map_location=torch.device('cpu'))
-pkeys = list(patterns.keys())
+    pcorr = torch.zeros([len(pkeys), x.shape[0], x.shape[-1]])
+    c0 = 0
+    for p in pkeys:
+        pat = patterns[p]["pat"]
+        corr = SPC(x, pat)
+        pcorr[c0, :, :] = corr.max(dim=1)[0][:,0,:]
+        c0 += 1
 
-CRE = []
-E = []
-SPC = SpatialPatCorr(x.shape).to(device)
-
-pcorr = torch.zeros([len(pkeys), x.shape[0], x.shape[-1]])
-c0 = 0
-for p in pkeys:
-    pat = patterns[p]["pat"]
-    corr = SPC(x, pat)
-    pcorr[c0, :, :] = corr.max(dim=1)[0][:,0,:]
-    c0 += 1
-
-res = x.clone()
-RE = [x.norm()]
-for c0 in range(x.shape[0]):
-    mv = pcorr[:,c0,:].max(dim=0)
-    df = pd.DataFrame(data={"pattern":[int(x) for x in mv[1]],
-                            "corr":mv[0]}).sort_values(by="corr",ascending=False).reset_index(drop=False)
-    df = df.rename(columns={"index":"location"})
-    res[c0:c0+1,:,:,:], e = compute_residual(x[c0:c0+1,:,:,:], patterns, pkeys, df)
-    RE.append(res.norm())
+    res = x.clone()
+    RE = [x.norm()]
+    for c0 in range(x.shape[0]):
+        mv = pcorr[:,c0,:].max(dim=0)
+        df = pd.DataFrame(data={"pattern":[int(x) for x in mv[1]],
+                                "corr":mv[0]}).sort_values(by="corr",ascending=False).reset_index(drop=False)
+        df = df.rename(columns={"index":"location"})
+        res[c0:c0+1,:,:,:], e = compute_residual(x[c0:c0+1,:,:,:], patterns, pkeys, df)
+        RE.append(res.norm())
 
 
 

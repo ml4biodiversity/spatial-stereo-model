@@ -72,6 +72,29 @@ def select_patterns(patterns, D):
         selected_patterns[keys[sel[winner]]] = patterns[keys[sel[winner]]]
     return selected_patterns
 
+""" 
+    Callable function
+"""
+def pattern_clustering(config):
+    inpath = f"extracted_patterns_{config["spectrum_processing"]}"
+    outpath = f"clustered_patterns_{config['spectrum_processing']}_{config["pattern_selection"]}"
+    os.makedirs(outpath, exist_ok=True)
+    files = sorted([str(x) for x in Path(inpath).rglob(f"*_{config["aviary"]}_*")])
+
+    SET = 4
+    print(f"Clustering set {config["aviary"]} of {len(files)} files")
+    Ns = int(len(files) / SET)
+    for c1 in range(Ns):
+        print(f"Processing subset {c1}/{Ns} of {config["aviary"]} of {len(files)} files")
+        this_files = files[c1 * SET:(c1 + 1) * SET]
+        patterns = torch.load(this_files[0], weights_only=False, map_location=torch.device('cpu'))
+        for f in this_files[1:]:
+            patterns = patterns | torch.load(f, weights_only=False, map_location=torch.device('cpu'))
+
+        D = compute_distance_matrix(patterns)
+        optimized_patterns = select_patterns(patterns, D)
+        torch.save(optimized_patterns, outpath + "/" + f"{config["aviary"]}_patterns_{c1}.pt")
+
 
 if __name__ == '__main__':
     inpath = f"extracted_patterns_{SPECMODEL}"

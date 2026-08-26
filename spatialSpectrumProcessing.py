@@ -132,6 +132,7 @@ class PureSpectrumProcessor(data.Dataset):
         return left, right, cc
 
 
+
 """ 
      The processing
 """            
