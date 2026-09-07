@@ -27,7 +27,7 @@ from SpatialPatCorr import SpatialPatCorr
 torch.set_float32_matmul_precision('medium')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-SPECMODEL = 2
+
 
 def compute_distance_matrix(pats):
     stacker = pat_to_max_size
@@ -50,7 +50,7 @@ def compute_distance_matrix(pats):
     return spcc
 
 
-def select_patterns(patterns, D):
+def select_patterns(patterns, D, number_of_patterns = 256):
     # Embedding based on the distance matrix
     tsne = TSNE(n_components=2, metric="precomputed", init="random",
                 perplexity=12)
@@ -59,7 +59,7 @@ def select_patterns(patterns, D):
     # Clustering in the embedded space
     # hdb = HDBSCAN(min_cluster_size=4)
     # xx = hdb.fit_predict(X_transformed)
-    number_of_patterns = 256
+
     if len(patterns)<number_of_patterns:
         number_of_patterns = len(patterns)
     cluster = KMeans(n_clusters=number_of_patterns, random_state=0).fit(X_transformed)
@@ -76,8 +76,8 @@ def select_patterns(patterns, D):
     Callable function
 """
 def pattern_clustering(config):
-    inpath = f"extracted_patterns_{config["spectrum_processing"]}"
-    outpath = f"clustered_patterns_{config['spectrum_processing']}_{config["pattern_selection"]}"
+    inpath = f"{config["output_path"]}/extracted_patterns_{config["spectrum_processing"]}"
+    outpath = f"{config["output_path"]}/clustered_patterns_{config['spectrum_processing']}_{config["pattern_selection"]}"
     os.makedirs(outpath, exist_ok=True)
     files = sorted([str(x) for x in Path(inpath).rglob(f"*_{config["aviary"]}_*")])
 
@@ -94,6 +94,34 @@ def pattern_clustering(config):
         D = compute_distance_matrix(patterns)
         optimized_patterns = select_patterns(patterns, D)
         torch.save(optimized_patterns, outpath + "/" + f"{config["aviary"]}_patterns_{c1}.pt")
+
+
+"""
+    Combine the clustered patterns in to an aviary specific library
+"""
+def aviary_specific_patterns(config):
+    inpath = f"{config["output_path"]}/clustered_patterns_{config['spectrum_processing']}_{config["pattern_selection"]}"
+    files = sorted([str(x) for x in Path(inpath).rglob(f"{config["aviary"]}_*") if str(x).find("aviary_patterns")==-1])
+
+#    if len(files)>10:  # Avoid filling RAM
+#        files = [str(x) for x in np.random.choice(files, 10)]
+
+    patterns = torch.load(files[0], weights_only=False, map_location=torch.device("cpu"))
+    c1 = 0
+    patterns = {f"set_{c1}_{k}":patterns[k] for k in patterns.keys()}
+
+    for f in files[1:]:
+        print(f"Collecting patterns: {f} - now {len(patterns)}")
+        newset = torch.load(f, weights_only=False, map_location=torch.device("cpu"))
+        patterns = patterns | {f"set_{c1}_{k}": newset[k] for k in newset.keys()}
+        c1 += 1
+        if len(patterns)>3000:
+            break
+    print("Compute distances")
+    D = compute_distance_matrix(patterns)
+    print("Select patterns")
+    optimized_patterns = select_patterns(patterns, D, number_of_patterns = 2048)
+    torch.save(optimized_patterns, inpath + "/" + f"{config["aviary"]}_aviary_patterns.pt")
 
 
 if __name__ == '__main__':

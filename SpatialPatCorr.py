@@ -114,8 +114,8 @@ def extract_patterns(config):
         stacker = stack_to_channels_stft
     MSF = MaxSegmentFinder()
 
-    specPath = f"./specData_{config["spectrum_processing"]}"
-    outpath = f"extracted_patterns_{config["spectrum_processing"]}"
+    specPath = f"./{config["output_path"]}/specData_{config["spectrum_processing"]}"
+    outpath = f"{config["output_path"]}/extracted_patterns_{config["spectrum_processing"]}"
     os.makedirs(outpath, exist_ok=True)
     data_name = config["aviary"]
     files = sorted([str(x).replace("\\","/") for x in Path(specPath).rglob(f"*_{data_name}_*")])
@@ -144,9 +144,9 @@ def extract_patterns(config):
                                 "pos": s[0], "max": el}
             except:
                 print(f"Something broken in {f}  file {c2}/{N} - omitting")
-                break
 
-        torch.save(patterns, f"{outpath}/sel_pat_{f.split("/")[1][:-3]}.pt")
+
+        torch.save(patterns, f"{outpath}/sel_pat_{f.split("/")[-1][:-3]}.pt")
 
 if __name__ == '__main__':
     dpath = f"specData{SPECMODEL}"

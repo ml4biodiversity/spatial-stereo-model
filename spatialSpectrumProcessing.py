@@ -183,9 +183,9 @@ def preprocessing(meta, config):
         specProc = PureSpectrumProcessor()
 
     data_name = config["aviary"]
-    spec_path = f"specData_{config["spectrum_processing"]}"
+    spec_path = f"{config["output_path"]}/specData_{config["spectrum_processing"]}"
     os.makedirs(spec_path, exist_ok=True)
-    raw_file_processing(specProc, meta, data_name, config["data_path"], spec_path)
+    raw_file_processing(specProc, meta, data_name, config["data_folder"], spec_path)
 
 
 """

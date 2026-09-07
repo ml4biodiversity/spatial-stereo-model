@@ -9,7 +9,7 @@ Copyright (c) Aki Härmä, DACS, Maastricht University, 2026.
 
 import torch
 
-def stack_to_channels_pure(item):
+def stack_to_channels_stft(item):
     left = item["left"].flatten(0,1)
     right = item["right"].flatten(0,1)
     spec = torch.stack([left, right])
@@ -26,5 +26,12 @@ def stack_to_channels_mel_spatial(item):
     coh = item["coh"]
     angle = item["angle"]
     # spec = torch.stack([left-left.mean(), right-right.mean()])
+    spec = torch.stack([spec, coh, angle])
+    return spec
+
+def stack_to_channels_melcc(item):
+    spec = item["left"]
+    coh = item["right"]
+    angle = item["cc"]
     spec = torch.stack([spec, coh, angle])
     return spec
